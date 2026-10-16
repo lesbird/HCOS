@@ -29,12 +29,15 @@ CM.WR	equ	2		; disk file, write (as NAME.$$$)
 CM.UPD	equ	3		; disk file, update
 CM.TT	equ	4		; console
 CM.LP	equ	5		; printer
+CM.HRD	equ	6		; HDOS disk file, read (hdosfs.asm)
+CM.SYN	equ	7		; made-up DIRECT.SYS of a CP/M disk
 
 DK.DISK	equ	0		; device kinds from dkind
 DK.TT	equ	1
 DK.LP	equ	2
+DK.HDOS	equ	3		; HDOS-format disk
 
-finit:	lxi	h,chtab
+finit:	lhld	pchtab
 	lxi	b,NCHAN*CHLEN
 fi1:	mvi	m,0
 	inx	h
@@ -89,7 +92,28 @@ de1:	mov	a,m			; skip blanks
 de2:	call	token			; first token
 	mov	a,m
 	cpi	':'
+	jz	de2a
+	; HDOS 2.0 PIP puts the unit in as a binary byte ("SY<1>:"),
+	; which real HDOS rejects. Take it, so PIP can list any unit.
+	ora	a
+	jz	de5
+	cpi	8
+	jnc	de5
+	inx	h
+	mov	a,m
+	dcx	h
+	cpi	':'
 	jnz	de5
+	lda	tokn
+	cpi	2
+	jnz	de5
+	mov	a,m
+	adi	'0'
+	sta	tokb+2
+	mvi	a,3
+	sta	tokn
+	inx	h
+de2a:
 	; it was a device: 2 letters + optional unit, or a drive letter
 	inx	h
 	mvi	a,1
@@ -260,13 +284,27 @@ dk.und:	mvi	a,EC.UND
 	stc
 	ret
 dk.dsk:	lda	dexpl			; no device given and unit 0:
-	ora	a			; current CP/M drive
-	lda	dnam+2
+	ora	a			; the current CP/M drive's unit
 	jnz	dk.d1
+	lda	dnam+2
 	ora	a
-	jz	dk.d2
-dk.d1:	inr	a
-dk.d2:	sta	ddrv
+	jnz	dk.d1
+	mvi	c,DRV_GET
+	call	BDOS
+	sta	dnam+2
+dk.d1:	lda	dnam+2
+	cpi	NUNIT
+	mvi	a,EC.UUN
+	cmc
+	rc
+	lda	dnam+2
+	inr	a
+	sta	ddrv
+	dcr	a
+	call	udet			; which format?
+	cpi	US.HDOS
+	mvi	a,DK.HDOS
+	rz
 	mvi	a,DK.DISK
 	ora	a
 	ret
@@ -311,10 +349,15 @@ parsenm: push	d
 	pop	h
 	rc
 	ora	a
-	mvi	a,EC.DNS
+	jz	pn1
+	cpi	DK.HDOS
+	mvi	a,EC.WP			; HDOS disks are read only
 	stc
-	rnz				; not a disk
-	lda	dnam+3
+	rz
+	mvi	a,EC.DNS		; not a disk
+	stc
+	ret
+pn1:	lda	dnam+3
 	ora	a
 	mvi	a,EC.IFN
 	stc
@@ -336,7 +379,7 @@ chptr:	inr	a
 	stc
 	ret
 cp1:	push	d
-	lxi	h,chtab
+	lhld	pchtab
 	lxi	d,CHLEN
 cp2:	ora	a
 	jz	cp3
@@ -370,19 +413,24 @@ chopen:	push	h
 	call	dkind
 	rc
 	sta	chkind
+	cpi	DK.HDOS
+	jz	cho0
 	ora	a
 	jnz	cho1			; device: nothing more
-	lda	dnam+3
+cho0:	lda	dnam+3
 	ora	a
 	mvi	a,EC.IFN
 	stc
 	rz
+	lda	chkind
+	ora	a
+	jnz	cho2			; HDOS disk: no FCB
 	lhld	chp
 	lxi	d,CH.FCB
 	dad	d
 	xchg
 	call	mkfcb
-	lhld	chp			; keep the decoded name
+cho2:	lhld	chp			; keep the decoded name
 	lxi	d,CH.DNAM
 	dad	d
 	xchg
@@ -409,20 +457,32 @@ setmode: lhld	chp
 ; ---- .OPENR .OPENU .OPENW .OPENC: A = channel, HL = name, DE =
 ; default block (.OPENC: BC = sectors). Exit HL past the name. ----
 
-sopenr:	mvi	a,CM.RD
+sopenr:	sta	chnum
+	mvi	a,CM.RD
 	jmp	sopn
-sopenu:	mvi	a,CM.UPD
+sopenu:	sta	chnum
+	mvi	a,CM.UPD
 sopn:	sta	chnew
 	mov	a,b			; keep BC
 	sta	chbc
 	mov	a,c
 	sta	chbc+1
-	lda	sca
+	lda	chnum
 	call	chopen
 	jc	sopx
+	cpi	DK.HDOS
+	jz	sophd
 	cpi	DK.DISK
 	jnz	sopdev
-	call	chfcb
+	lda	chnew			; DIRECT.SYS of a CP/M disk is
+	cpi	CM.RD			; made up
+	jnz	sop1
+	call	isdir
+	jnz	sop1
+	call	synopen
+	ora	a
+	jmp	sopx
+sop1:	call	chfcb
 	mvi	c,F_OPEN
 	call	BDOS
 	inr	a
@@ -441,6 +501,15 @@ sopx:	push	psw
 	lhld	chname
 	ret
 
+; HDOS disk: read only.
+sophd:	lda	chnew
+	cpi	CM.RD
+	mvi	a,EC.WP
+	stc
+	jnz	sopx
+	call	hopen
+	jmp	sopx
+
 ; TT: or LP:
 sopdev:	cpi	DK.LP
 	mvi	a,CM.TT
@@ -455,9 +524,11 @@ sopd1:	call	setmode
 	ora	a
 	jmp	sopx
 
-sopenc:	mvi	a,1			; must not exist yet
+sopenc:	sta	chnum
+	mvi	a,1			; must not exist yet
 	jmp	sopw0
-sopenw:	xra	a
+sopenw:	sta	chnum
+	xra	a
 sopw0:	sta	chnoex
 	mvi	a,CM.WR
 	sta	chnew
@@ -465,9 +536,14 @@ sopw0:	sta	chnoex
 	sta	chbc
 	mov	a,c
 	sta	chbc+1
-	lda	sca
+	lda	chnum
 	call	chopen
 	jc	sopx
+	cpi	DK.HDOS
+	mvi	a,EC.WP			; HDOS disks are read only
+	stc
+	jz	sopx
+	lda	chkind
 	cpi	DK.DISK
 	jnz	sopdev
 	lda	chnoex
@@ -622,6 +698,14 @@ sread:	call	rwchk
 	jz	rw.ilr
 	cpi	CM.LP
 	jz	rw.ilr
+
+; chrd - read B sectors into DE from open channel chp (not TT:).
+chrd:	lhld	chp
+	mov	a,m
+	cpi	CM.HRD
+	jz	hread
+	cpi	CM.SYN
+	jz	synrd
 	mvi	a,F_READRAND
 	jmp	rwsec
 
@@ -633,6 +717,8 @@ swrite:	call	rwchk
 	jz	lpwrit
 	cpi	CM.RD
 	jz	rw.ilr
+	cpi	CM.HRD			; HDOS file, made-up directory
+	jnc	rw.ilr
 	mvi	a,F_WRITERAND
 
 ; rwsec - move B sectors with BDOS function A (random read or write).
@@ -784,6 +870,10 @@ ttr1:	push	b
 ; the end).
 sposit:	call	rwchk
 	rc
+	cpi	CM.HRD
+	jz	hposit
+	cpi	CM.SYN
+	jz	synpos
 	cpi	CM.TT
 	mvi	a,EC.DNS
 	cmc
@@ -916,15 +1006,49 @@ sdecod:	push	b
 	pop	d
 	rc
 	ora	a			; flags: directory device, read,
-	mvi	a,DT.DIR		; write, random
-	jz	sdc1
+	jz	sdc0			; write, random
+	cpi	DK.HDOS
 	mvi	a,DT.CHR
+	jnz	sdc1
+sdc0:	mvi	a,DT.DIR
 sdc1:	stax	d
 	inx	d
-	lxi	h,dnam
+	lxi	h,dnam			; device, unit, name, ext
 	mvi	b,14
 	call	move
+	xra	a			; project, version
+	stax	d
+	inx	d
+	stax	d
+	inx	d
+	push	d			; the device table entry
+	call	devfind
+	xchg
+	pop	h
+	mov	m,e
+	inx	h
+	mov	m,d
 	xra	a
+	ret
+
+; devfind - HL -> the device table entry for dnam's device, or 0.
+devfind: lxi	h,devtab
+df1:	mov	a,m
+	ora	a
+	jz	df.no
+	lda	dnam
+	cmp	m
+	inx	h
+	jnz	df2
+	lda	dnam+1
+	cmp	m
+	jnz	df2
+	dcx	h
+	ret
+df2:	lxi	d,DEVELEN-1
+	dad	d
+	jmp	df1
+df.no:	lxi	h,0
 	ret
 
 DT.DIR	equ	0Fh		; DT.DD+DT.CR+DT.CW+DT.RN
@@ -1195,6 +1319,7 @@ chname:	dw	0			; name pointer after decoding
 chkind:	db	0
 chnew:	db	0			; mode being opened
 chnoex:	db	0			; .OPENC: must not exist
+chnum:	db	0			; channel being opened
 chbc:	dw	0			; caller's BC (B, C)
 rwfn:	db	0
 errc:	db	0

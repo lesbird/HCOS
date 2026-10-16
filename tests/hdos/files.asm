@@ -5,8 +5,8 @@
 
 BUF	equ	4000h
 
-; RES 'label' - print label and the carry/A from the last SCALL.
-RES	macro	label
+; SHOW 'label' - print label and the carry/A from the last SCALL.
+SHOW	macro	label
 	push	psw
 	call	PSTR
 	db	label,0
@@ -33,15 +33,15 @@ fill:	mov	m,b
 	lxi	h,nf
 	lxi	d,defdat
 	SCALL	.OPENW
-	RES	'OW'
+	SHOW	'OW'
 	mvi	a,0
 	lxi	b,3*256
 	lxi	d,BUF
 	SCALL	.WRITE
-	RES	' WR'
+	SHOW	' WR'
 	mvi	a,0
 	SCALL	.CLOSE
-	RES	' CL'
+	SHOW	' CL'
 	call	PNL
 
 	; Read it back: 1 sector, then ask for 4 (only 2 left).
@@ -49,13 +49,13 @@ fill:	mov	m,b
 	lxi	h,nfx			; no extension: default DAT
 	lxi	d,defdat
 	SCALL	.OPENR
-	RES	'OR'
+	SHOW	'OR'
 	call	rd1
 	mvi	a,1
 	lxi	b,4*256
 	lxi	d,BUF
 	SCALL	.READ
-	RES	' RD4'
+	SHOW	' RD4'
 	call	PSTR
 	db	' B=',0
 	mov	a,b
@@ -70,12 +70,12 @@ fill:	mov	m,b
 	mvi	a,1
 	lxi	b,1
 	SCALL	.POSIT
-	RES	'PO1'
+	SHOW	'PO1'
 	call	rd1
 	mvi	a,1
 	lxi	b,7
 	SCALL	.POSIT
-	RES	' PO7'
+	SHOW	' PO7'
 	call	PSTR
 	db	' BC=',0
 	mov	h,b
@@ -88,7 +88,7 @@ fill:	mov	m,b
 	lxi	d,BUF
 	lxi	h,BUF+8
 	SCALL	.NAME
-	RES	'NAME'
+	SHOW	'NAME'
 	mvi	a,' '
 	SCALL	.SCOUT
 	lxi	h,BUF
@@ -99,35 +99,35 @@ fill:	mov	m,b
 	; Close twice; bad channel; read a closed channel.
 	mvi	a,1
 	SCALL	.CLOSE
-	RES	'CL'
+	SHOW	'CL'
 	mvi	a,1
 	SCALL	.CLOSE
-	RES	' CL'
+	SHOW	' CL'
 	mvi	a,9
 	lxi	b,256
 	lxi	d,BUF
 	SCALL	.READ
-	RES	' CH9'
+	SHOW	' CH9'
 	mvi	a,2
 	lxi	b,256
 	lxi	d,BUF
 	SCALL	.READ
-	RES	' CH2'
+	SHOW	' CH2'
 	call	PNL
 
 	; Name errors.
 	lxi	h,nnope
 	call	tryopen
-	RES	'NOPE'
+	SHOW	'NOPE'
 	lxi	h,nbad
 	call	tryopen
-	RES	' 1BAD'
+	SHOW	' 1BAD'
 	lxi	h,nbaddev
 	call	tryopen
-	RES	' XX:'
+	SHOW	' XX:'
 	lxi	h,ntt
 	call	tryopen
-	RES	' TT:'
+	SHOW	' TT:'
 	mvi	a,2
 	SCALL	.CLOSE
 	call	PNL
@@ -137,13 +137,13 @@ fill:	mov	m,b
 	lxi	d,defdat
 	lxi	b,ng
 	SCALL	.RENAM
-	RES	'RN'
+	SHOW	'RN'
 	lxi	h,nf
 	call	tryopen
-	RES	' OLD'
+	SHOW	' OLD'
 	lxi	h,ng
 	call	tryopen
-	RES	' NEW'
+	SHOW	' NEW'
 	mvi	a,2
 	SCALL	.CLOSE
 	call	PNL
@@ -159,7 +159,7 @@ fill:	mov	m,b
 	SCALL	.WRITE
 	mvi	a,3
 	SCALL	.CLEAR
-	RES	'CLR'
+	SHOW	'CLR'
 	mvi	a,3
 	lxi	h,ng
 	lxi	d,defdat
@@ -168,7 +168,7 @@ fill:	mov	m,b
 	lxi	b,4*256
 	lxi	d,BUF
 	SCALL	.READ
-	RES	' RD4'
+	SHOW	' RD4'
 	call	PSTR
 	db	' B=',0
 	mov	a,b
@@ -180,11 +180,11 @@ fill:	mov	m,b
 	lxi	h,ng
 	lxi	d,defdat
 	SCALL	.DELET
-	RES	' DEL'
+	SHOW	' DEL'
 	lxi	h,ng
 	lxi	d,defdat
 	SCALL	.DELET
-	RES	' DEL'
+	SHOW	' DEL'
 	call	PNL
 
 	; .DECODE
@@ -192,7 +192,7 @@ fill:	mov	m,b
 	lxi	d,defdat
 	lxi	b,BUF
 	SCALL	.DECODE
-	RES	'DEC'
+	SHOW	'DEC'
 	lxi	h,BUF
 	mvi	b,15
 dec1:	mvi	a,' '
@@ -222,7 +222,7 @@ rd1:	mvi	a,1
 	lxi	b,256
 	lxi	d,BUF
 	SCALL	.READ
-	RES	' RD'
+	SHOW	' RD'
 	mvi	a,' '
 	SCALL	.SCOUT
 	lda	BUF

@@ -140,9 +140,13 @@ S.CONFL	equ	20DAh		;   console flags (^O, ^S)
 S.CAADR	equ	20DBh		;   abort address (valid if >= 256)
 S.CCTAB	equ	20DDh		;   ^A, ^B, ^C handler addresses
 S.INT	equ	20E3h		; system internal work area (ESINT):
+S.OFWA	equ	20E8h		;   -> overlay table
+S.CFWA	equ	20EAh		;   -> channel table
+S.DFWA	equ	20ECh		;   -> device table
 S.CACC	equ	2106h		;   A at the SCALL
 S.CODE	equ	2107h		;   SCALL function in progress
 S.JUMPS	equ	2108h		;   6 JMPs into resident HDOS
+S.GUP	equ	2117h		;   JMP: get unit table entry
 S.MOUNT	equ	211Ah		;   <>0 if the system disk is mounted
 S.SCR	equ	2151h		;   address of the system scratch area
 				;   (HDOS BASIC uses 512 bytes there)

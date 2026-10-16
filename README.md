@@ -4,8 +4,9 @@ A single operating system for the Heathkit H8 and H89 that runs both
 **HDOS** (`.ABS`) and **CP/M 2.2** (`.COM`) programs, written in pure 8080
 assembly.
 
-Status: phase 1 done. **HDOS.COM** runs HDOS 2.0 `.ABS` programs, including
-HDOS BASIC, under CP/M 2.2 ([HDOSCOM.md](docs/HDOSCOM.md)).
+Status: phases 1, 1b and 2 done. **HDOS.COM** runs HDOS 2.0 `.ABS` programs,
+including HDOS BASIC and PIP, under CP/M 2.2. They can use CP/M disks and
+read real HDOS disks ([HDOSCOM.md](docs/HDOSCOM.md)).
 
 - [Architecture](docs/ARCHITECTURE.md): the draft design
 - [HDOS.COM](docs/HDOSCOM.md): phase 1, HDOS programs under CP/M

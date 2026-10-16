@@ -1,15 +1,17 @@
 # HDOS.COM
 
-HDOS.COM is a CP/M 2.2 program that runs HDOS 2.0 `.ABS` programs. It is
-phase 1 of HCOS. It proves the SCALL translation and the emulated HDOS
-system area before both move into the HCOS kernel.
+HDOS.COM is a CP/M 2.2 program that runs HDOS 2.0 `.ABS` programs. They can
+use files on CP/M disks and read real HDOS disks in the same machine. It is
+phases 1, 1b and 2 of HCOS. It proves the SCALL translation, the emulated
+HDOS system area and the HDOS file system before they move into the HCOS
+kernel.
 
 ```
 A>HDOS [/T] PROG [args]
 ```
 
-- `PROG` is an HDOS file name; the default device and type are `SY0:` and
-  `.ABS`.
+- `PROG` is an HDOS file name; the default type is `.ABS`. It can be on a
+  CP/M disk or an HDOS disk (`HDOS SY1:BASIC`).
 - `args` are passed to the program as HDOS's command processor passes them.
 - `/T` traces every SCALL on the console as `[fff A=hh]`: the function in
   octal and A in hex.
@@ -21,9 +23,9 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
 | Program | Status |
 |---|---|
 | BASIC.ABS (Benton Harbor BASIC #110.06.00) | Runs. RUN, SAVE, OLD, LIST, error messages and BYE all work. Covered by `make test`. |
-| PIP.ABS | Copies files. `/L` (directory listing) stops: it calls S.GUP (see below). |
+| PIP.ABS | Copies files: CP/M to CP/M, and HDOS disk to CP/M disk. `/L` lists CP/M disks and HDOS disks, with sizes, dates, flags and free space. Covered by `make test`. |
 | EDIT.ABS, PATCH.ABS, FLAGS.ABS | Start and take commands. Keystrokes so far behave the same as on real HDOS. |
-| ONECOPY.ABS | Stops: it needs `.LOADO` (overlays) and dismounts disks. |
+| ONECOPY.ABS | Runs as far as asking for disks to be swapped. A single-drive copier doesn't fit under CP/M, which needs its system disk in A:. |
 | SET.ABS | Exits with "Illegal Device Specification". It configures HDOS device drivers, which don't exist under CP/M. |
 
 ## Memory map
@@ -33,10 +35,11 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
 | 0000H-00FFH | CP/M page zero. RST 1 and RST 7 are hooked while a program runs and put back on exit. |
 | 0100H-182FH | HDOS.COM code and small data |
 | 1830H-1991H | The H17 ROM utility library at its ROM addresses (`src/hdoscom/romlib.asm`) |
-| 1992H-1F07H | Buffers, scratch area (S.SCR) and HDOS.COM's stack (not stored in the .COM file) |
+| 1992H-1FFFH | More code (the made-up directory), then small buffers and HDOS.COM's stack |
 | 2000H-227FH | Emulated HDOS system area: monitor RAM cells, RST vector slots, S.VAL, S.INT. Command-line arguments sit just below 2280H. |
 | 2280H-  | The HDOS program, as loaded from its header |
-| BDOS-   | CP/M. S.SYSM is set to the BDOS page, so programs can use everything below it, including the CCP. |
+| BDOS−2.5K | HDOS.COM's high buffers: a GRT page for each of units 0-3, the scratch area (S.SCR), a directory block buffer, the type-ahead and the channel table |
+| BDOS-   | CP/M. S.SYSM is set to the start of the high buffers, so programs can use everything below them, including the CCP. On a 64K machine that is D800H, about 5.5K less than real HDOS 2.0 (EDB1H). |
 
 ## How it works
 
@@ -68,11 +71,35 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
     the second half zeroed.
   - The loaded program stays open on channel −1.
 - **Devices:**
-  - `SYn:` and `DKn:` map to drive n (A: = SY0:).
-  - CP/M drive letters are also accepted.
+  - `SYn:` and `DKn:` map to drive n (A: = SY0:), units 0-3.
+  - CP/M drive letters A:-D: are also accepted.
   - With no device and the default `SY0`, a file is on the current CP/M
-    drive.
+    drive, and `.DECODE`/`.NAME` report that drive's unit.
   - `TT:` is the console and `LP:` the CP/M list device.
+  - There are HDOS-style device and unit tables (S.DFWA, S.GUP) for
+    programs that look at them, as PIP does.
+- **HDOS disks** (`hdosfs.asm`, `bios.asm`):
+  - A unit counts as an HDOS disk when it's an H17 drive (20 records a
+    track in its DPB) and sector 9 holds a believable HDOS label.
+  - Units are checked the first time a name on them is decoded, and again
+    after any mount SCALL (`.MOUNT`, `.RESET`, ...). Those also make CP/M
+    log its disks in again.
+  - Sectors are read through the CP/M BIOS: HDOS sector n is track n/10,
+    BIOS sectors 2(n mod 10)+1 and +2.
+  - Files are found in the disk's own directory and read by following
+    their GRT chains. DIRECT.SYS and GRT.SYS are ordinary files there.
+  - HDOS disks are **read only** for now. Opening for write or update,
+    `.DELET` and `.RENAM` return EC.WP ("Disk is Write Protected").
+- **Made-up directory for CP/M disks** (`syndir.asm`):
+  - Opening DIRECT.SYS on a CP/M disk gives HDOS directory blocks built
+    from the CP/M directory: 22 entries a block, names zero-padded.
+  - CP/M's SYS attribute becomes the S flag (hidden from PIP without `/S`),
+    and R/O becomes W.
+  - The unit's GRT is filled in to match. Each file has a chain long enough
+    for its size, and the free space is a chain on GRT[0]. PIP's sizes and
+    free count come out right. The sectors per group are the smallest power
+    of 2 that keeps the disk under 220 groups.
+  - Dates show as No-Date.
 - **Errors:** `.ERROR` reads `ERRORMSG.SYS` from the current drive, then A:,
   as HDOS reads it from SY0:. Copy it from an HDOS disk to get the messages.
   Without it you get "?02 Error # NNN".
@@ -83,12 +110,20 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
 
 ## Not supported yet
 
-- `.LOADO` (overlays), `.CHFLG`, `.DISMT` and `.LOADD` report themselves
-  on the console and return EC.ILR. The mount calls (200Q and up) return
-  EC.ILC.
-- **Calls into resident HDOS through S.JUMPS** (S.GUP, S.FCI, ...). These are
-  how PIP lists directories. HDOS.COM names the entry point and exits. This
-  needs an HDOS view of the CP/M directory (phase 2).
+- **`.LOADO`** succeeds, as on HDOS 3.0: everything is resident already.
+  The overlay table says both overlays are resident.
+- `.CHFLG`, `.DISMT` and `.LOADD` report themselves on the console and
+  return EC.ILR.
+- **Writing to HDOS disks.**
+- **Calls into resident HDOS through S.JUMPS** other than S.GUP. HDOS.COM
+  names the entry point and exits.
+- **HDOS 2.0 PIP quirks, matched on purpose:** it can't copy a file that
+  has no extension (real HDOS gives "File Cannot Be Located" too).
+
+  One deliberate difference: 2.0 PIP builds the name of the directory it
+  lists with the unit as a binary byte ("SY\x01:DIRECT.SYS"). Real HDOS
+  rejects that, so `PIP SY1:/L` fails there with "Device Format Error".
+  HDOS.COM accepts it, so PIP can list any unit.
 - **Programs that call the monitor ROM** (0000H-0FFFH), which is CP/M's
   page zero here. These need H-mode (phase 5).
 - **Clock:** HDOS.COM counts ticks in .TICCNT. Program clock hooks (UO.CLK

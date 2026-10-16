@@ -55,9 +55,15 @@ si3:	mvi	m,0C3h
 	pop	h
 	dcr	b
 	jnz	si3
+	lxi	h,gup			; S.GUP is real: PIP uses it
+	shld	S.GUP+1
+	lxi	h,devtab		; device and overlay tables
+	shld	S.DFWA
+	lxi	h,ovltab
+	shld	S.OFWA
 	mvi	a,1			; system disk mounted
 	sta	S.MOUNT
-	lxi	h,sscr			; scratch area
+	lhld	psscr			; scratch area
 	shld	S.SCR
 
 	lxi	h,sexita		; S.EXITA: XRA A / SCALL .EXIT
@@ -224,6 +230,64 @@ sjnam:	db	'S.SDD',0dh,0ah,'$'
 	db	'S.FCI',0dh,0ah,'$'
 	db	'S.SCI',0dh,0ah,'$'
 	db	'S.GUP',0dh,0ah,'$'
+
+; S.GUP - HL -> a unit table pointer (DEV.UNT), A = unit: HL -> that
+; unit's entry. Uses F, H, L.
+gup:	push	psw
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+	pop	psw
+	push	psw
+	ani	7
+	rlc
+	rlc
+	rlc
+	call	rdadap
+	pop	psw
+	ret
+
+; Device table (DEVDEF): name, residence, JMP driver, flags, mounted
+; unit mask, units, -> unit table, driver length and group. SY: and
+; DK: are both the CP/M drives.
+DEVELEN	equ	14
+DR.IMPR	equ	03h		; in memory, permanent
+devtab:	db	'SY',DR.IMPR,0C3h
+	dw	ddrv.x
+	db	DT.DIR,0Fh,NUNIT
+	dw	unttab,0
+	db	0
+	db	'DK',DR.IMPR,0C3h
+	dw	ddrv.x
+	db	DT.DIR,0Fh,NUNIT
+	dw	unttab,0
+	db	0
+	db	'TT',DR.IMPR,0C3h
+	dw	ddrv.x
+	db	DT.CHR,1,1
+	dw	chrunt,0
+	db	0
+	db	'LP',DR.IMPR,0C3h
+	dw	ddrv.x
+	db	DT.CHR,1,1
+	dw	chrunt,0
+	db	0
+	db	0			; end
+chrunt:	db	DT.CHR,0
+	dw	0,0,0
+
+; Overlay table: both HDOS overlays in memory and resident, as they
+; are in effect (PIP reads OVL.FLB).
+ovltab:	dw	0,0,0
+	db	3,0
+	dw	0,0,0
+	db	3,0
+
+; A program called a device driver directly: not supported.
+ddrv.x:	mvi	a,EC.DDA
+	stc
+	ret
 
 svrst1:	ds	3			; CP/M's page zero RST 1 and RST 7
 svrst7:	ds	3

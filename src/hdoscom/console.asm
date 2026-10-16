@@ -48,7 +48,7 @@ si.chr:	lhld	kin			; L = kin, H = kout
 	jz	si.none
 	mov	e,h			; A = kbuf[kout]
 	mvi	d,0
-	lxi	h,kbuf
+	lhld	pkbuf
 	dad	d
 	mov	b,m
 	mov	a,e
@@ -246,7 +246,8 @@ kstore:	mov	b,a
 	jmp	coutnp
 ks1:	sta	kin
 	mvi	h,0
-	lxi	d,kbuf
+	xchg
+	lhld	pkbuf
 	dad	d
 	mov	m,b
 	mov	a,b
@@ -363,7 +364,7 @@ kdel:	lhld	kin
 	mov	c,a
 	mov	e,a
 	mvi	d,0
-	lxi	h,kbuf
+	lhld	pkbuf
 	dad	d
 	mov	a,m
 	cpi	NL

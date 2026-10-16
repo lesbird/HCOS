@@ -31,7 +31,13 @@ scdisp:	sta	sca			; save A and HL
 	lxi	h,scr
 	cpi	.CRC16+1
 	jc	sc1
-	sui	.LINK
+	cpi	.MOUNT			; mount group: one handler
+	jc	sc0
+	cpi	.DAD+1
+	jnc	scbad
+	lxi	h,smount
+	jmp	scgo
+sc0:	sui	.LINK
 	jc	scbad
 	lxi	h,sco
 	cpi	.LOADD-.LINK+1
@@ -97,6 +103,29 @@ scbad:	lxi	h,scill			; illegal function
 
 scill:	mvi	a,EC.ILC
 	stc
+	ret
+
+; .LOADO: A = overlay 0 or 1. Everything is resident already.
+sloado:	cpi	2
+	mvi	a,EC.IOI
+	cmc
+	rc
+	xra	a
+	ret
+
+; .MOUNT .DMOUN .MONMS .DMNMS .RESET .RESNMS .DAD: disks may have been
+; changed. Make CP/M log them in again and look at each one afresh.
+smount:	mvi	c,DRV_GET
+	call	BDOS
+	push	psw
+	mvi	c,DRV_RESET
+	call	BDOS
+	pop	psw
+	mov	e,a
+	mvi	c,DRV_SEL
+	call	BDOS
+	call	uinit
+	xra	a
 	ret
 
 ; Not implemented yet: say so on the console once per function, then
@@ -169,7 +198,7 @@ scr:	dw	sexit			; .EXIT
 	dw	swrite			; .WRITE
 	dw	sconsl			; .CONSL
 	dw	sclrco			; .CLRCO
-	dw	scnyi			; .LOADO
+	dw	sloado			; .LOADO
 	dw	svers			; .VERS
 	dw	scill			; .GDA (3.0)
 	dw	scill			; .CRC16 (3.0)

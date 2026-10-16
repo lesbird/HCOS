@@ -14,6 +14,7 @@ C_RAWIO	equ	6		; direct console I/O: E=0FFH input/status
 C_WRITESTR equ	9		; print string at DE, ends with '$'
 C_STAT	equ	11		; console status
 DRV_RESET equ	13		; reset disk system
+DRV_SEL	equ	14		; select drive E
 F_OPEN	equ	15
 F_CLOSE	equ	16
 F_SFIRST equ	17
@@ -25,6 +26,8 @@ F_MAKE	equ	22
 F_RENAME equ	23
 DRV_GET	equ	25		; current drive, 0 = A
 F_DMAOFF equ	26		; set DMA address to DE
+DRV_ALLOC equ	27		; HL = allocation vector
+DRV_DPB	equ	31		; HL = disk parameter block
 F_READRAND equ	33
 F_WRITERAND equ	34
 F_SIZE	equ	35		; compute file size into R0-R2

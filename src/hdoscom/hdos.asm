@@ -26,17 +26,27 @@
 	include	loader.asm
 	include	sysarea.asm
 	include	main.asm
+	include	bios.asm
+	include	hdosfs.asm
 
 	assert	$ <= ROMLIB		; code must end below the ROM library
 	include	romlib.asm		; H17 ROM routines, 1830H-1991H
 
-; ---- Buffers, after the ROM library (not stored in HDOS.COM) ----
+; ---- High buffers: just below the CP/M BDOS, found at run time ----
+HI.GRT	equ	0			; GRT of each unit, 256 each (page
+					; aligned: hibase is)
+HI.SCR	equ	HI.GRT+NUNIT*256	; system scratch area (S.SCR), 512
+HI.SEC	equ	HI.SCR+512		; sector / directory block buffer, 512
+HI.KBUF	equ	HI.SEC+512		; type-ahead
+HI.CHT	equ	HI.KBUF+KSIZE		; channel table, channels -1..5
+HISIZE	equ	(HI.CHT+NCHAN*CHLEN+255) and 0FF00h
+
+; ---- More code, after the ROM library ----
 	org	ROMLIBE
+	include	syndir.asm
+
+; ---- Buffers (not stored in HDOS.COM) ----
 cmdbuf:	ds	129			; copy of the command tail
-sscr:	ds	512			; system scratch area (S.SCR)
-kbuf:	ds	KSIZE			; type-ahead
-chtab:	ds	NCHAN*CHLEN		; channels -1..5
-ldfcb:	ds	FCBLEN			; program file
 errfcb:	ds	FCBLEN
 tmpfcb:	ds	FCBLEN
 tmpfcb2: ds	FCBLEN

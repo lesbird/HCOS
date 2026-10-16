@@ -3,11 +3,30 @@
 ; ---- Start-up ----
 
 start:	lxi	sp,hcstk
+	lhld	BDOS+1			; the high buffers go just below the
+	mvi	l,0			; BDOS, and programs get the rest
+	lxi	d,-HISIZE
+	dad	d
+	shld	memtop
+	shld	hibase
+	lxi	d,HI.SCR		; and point at each buffer
+	call	hiptr
+	shld	psscr
+	lxi	d,HI.SEC
+	call	hiptr
+	shld	psec
+	lxi	d,HI.GRT
+	call	hiptr
+	shld	pgrt
+	lxi	d,HI.KBUF
+	call	hiptr
+	shld	pkbuf
+	lxi	d,HI.CHT
+	call	hiptr
+	shld	pchtab
 	call	cinit			; console state
 	call	finit			; channel table
-	lhld	BDOS+1			; first address we must not touch
-	mvi	l,0
-	shld	memtop
+	call	uinit			; units: format not known yet
 
 	; Copy the command tail out of TBUF, which disk reads reuse.
 	lxi	h,TBUF
@@ -92,9 +111,20 @@ hexit:	lxi	sp,hcstk
 	call	sysdone
 	jmp	BOOT
 
+; hiptr - HL = hibase + DE.
+hiptr:	lhld	hibase
+	dad	d
+	ret
+
 ; ---- Data ----
 
-memtop:	dw	0			; FWA of CP/M BDOS (page aligned)
+memtop:	dw	0			; top of program memory (= hibase)
+hibase:	dw	0			; high buffers, below the BDOS
+psscr:	dw	0			; -> scratch area (S.SCR)
+psec:	dw	0			; -> sector buffer
+pgrt:	dw	0			; -> GRT of unit 0 (then 1, 2, 3)
+pkbuf:	dw	0			; -> type-ahead
+pchtab:	dw	0			; -> channel table
 pname:	dw	0			; program name in the command tail
 pnend:	dw	0			; end of the name
 pnchr:	db	0			; char that was at the end of the name

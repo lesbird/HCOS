@@ -1,4 +1,5 @@
-; cons.asm - console output, .VERS, .CONSL and system area cells.
+; cons.asm - console output, .VERS, .CONSL, system area cells, .SETTP
+; and .LOADO.
 
 	include	test.inc
 
@@ -106,6 +107,19 @@ bad:	lxi	h,3000h
 	call	PSTR
 	db	' USRM=',0
 	call	PHEXW
+	call	PNL
+
+	call	PSTR			; .LOADO: overlays 0 and 1, then a
+	db	'LOADO',0		; bad one
+	mvi	a,0
+	SCALL	.LOADO
+	call	PRES
+	mvi	a,1
+	SCALL	.LOADO
+	call	PRES
+	mvi	a,2
+	SCALL	.LOADO
+	call	PRES
 	call	PNL
 
 	call	PSTR

@@ -3,8 +3,8 @@
 **HCOS** (HDOS CP/M Operating System): an operating system for the Heathkit H8 and H89 that runs both
 **HDOS** (`.ABS`) and **CP/M 2.2** (`.COM`) programs, written in 8080 assembly.
 
-- Status: **Draft 0.2**, 2026-10-16. Phase 1 (HDOS.COM) is done; see
-  [HDOSCOM.md](HDOSCOM.md).
+- Status: **Draft 0.3**, 2026-10-16. Phases 1, 1b and 2 (HDOS.COM) are
+  done; see [HDOSCOM.md](HDOSCOM.md).
 - Background: [research-notes.txt](research-notes.txt)
 
 > Facts marked **[VERIFY]** are from memory and must be checked against
@@ -454,7 +454,7 @@ be changed in `HCOS.CFG`.
 | ~~V3~~ | HDOS system area layout: **done**, `src/inc/hdos.inc` | HDOS 2.0 dump, ESVAL/ESINT/HOSEQU |
 | ~~V4~~ | SCALL numbers and conventions: **done** for every call HDOS.COM implements | HOSDEF, HDOS 3.0 listing, HDOS 2.0 disassembly, differential tests |
 | ~~V5~~ | `.ABS` header format: **done**, see section 6 | HDOS 2.0 system disk |
-| V6 | HDOS directory entry, GRT, label format | HDOS 3.0 decks (DIRDEF, LABDEF) / disk images |
+| ~~V6~~ | HDOS directory, GRT, RGT and label format: **done**, `src/hdoscom/hdosfs.asm` | DIRDEF, DISDEF, LABDEF, HDOS 2.0 disk image |
 | ~~V7~~ | Channels: **done**, −1 to 5 (−1 = loaded program) | HDOS 3.0 listing, tests |
 | ~~V8~~ | Error codes: **done**, `src/inc/hdos.inc` | ECDEF |
 | V9 | CP/M DPBs for H17/H37 formats | Heath CP/M BIOS |
@@ -471,8 +471,9 @@ be changed in `HCOS.CFG`.
 |---|---|---|
 | 0 | **Done.** Toolchain, emulator setup ([lesbird/H89](https://github.com/lesbird/H89)), test disk images, build script | can build and boot |
 | 1 | **Done.** **`HDOS.COM`** runs `.ABS` files under stock CP/M (C-mode, SCALL at 0038H, console and file SCALLs mapped to BDOS). HDOS BASIC runs. See [HDOSCOM.md](HDOSCOM.md) | SCALL translation, sys area |
-| 1b | `.LOADO` overlays; an HDOS view of the CP/M directory for S.GUP/DIRECT.SYS (PIP `/L`) | more of Heath's utilities |
-| 2 | HDOS FS read-only module inside `HDOS.COM` (raw BIOS sector access) | HDOS on-disk format |
+| 1b | **Done.** `.LOADO`, device/unit tables and S.GUP, a made-up DIRECT.SYS and GRT for CP/M disks: PIP lists CP/M disks | more of Heath's utilities |
+| 2 | **Done.** HDOS FS read-only module inside `HDOS.COM` (raw BIOS sector access): run, copy and list from real HDOS disks | HDOS on-disk format |
+| 2b | Writing HDOS disks (GRT allocation, directory update) | full HDOS FS |
 | 3 | HCOS resident kernel: KAPI, KFB, CP/M FS, BDOS personality, H17 driver, boots from disk | replaces CP/M |
 | 4 | SCALL personality moved into the kernel; HDOS FS read/write; HCCP | dual personality |
 | 5 | H-mode (ROM swap) + `ROMPROG` list | ROM-dependent programs |
