@@ -3,7 +3,8 @@
 **HCOS** (HDOS CP/M Operating System): an operating system for the Heathkit H8 and H89 that runs both
 **HDOS** (`.ABS`) and **CP/M 2.2** (`.COM`) programs, written in 8080 assembly.
 
-- Status: **Draft 0.1**, 2026-10-16
+- Status: **Draft 0.2**, 2026-10-16. Phase 1 (HDOS.COM) is done; see
+  [HDOSCOM.md](HDOSCOM.md).
 - Background: [research-notes.txt](research-notes.txt)
 
 > Facts marked **[VERIFY]** are from memory and must be checked against
@@ -152,23 +153,32 @@ size down.
 
 Used for **all CP/M programs and, by default, HDOS programs too**.
 
-HDOS programs load at 2280H and only need the 2000H-227FH system area plus
-a working RST 7, and all of that can live in RAM. In C-mode the kernel:
+HDOS programs load at 2280H. They need the 2000H-227FH system area, a
+working RST 7, and, it turns out, the H17 ROM's utility library. All of that
+can live in RAM. In C-mode the kernel:
 
-1. Builds page zero. `0038H` holds `JMP SCALL_DISPATCH`.
-2. Builds the emulated HDOS system area at 2000H-227FH.
-3. **Recreates the ROM's vector indirection.** Each page-zero RST slot jumps
-   through the same RAM vector slot in the 20xxH area that the real ROM
-   uses. HDOS programs that patch those vectors, such as clock hooks, then
-   behave as they would on real HDOS. **[VERIFY vector addresses from MTR
-   listings]**
+1. Builds page zero. `0038H` holds a JMP to the RST 7 RAM slot.
+2. Builds the emulated HDOS system area at 2000H-227FH (laid out in
+   `src/inc/hdos.inc`, checked against a dump of HDOS 2.0).
+3. **Recreates the ROM's vector indirection.** RST n jumps through the RAM
+   slot at `.UIVEC+3*(n-1)` (201FH; RST 7 is 2031H), as the real ROM does.
+   HDOS programs that patch those vectors then behave as on real HDOS.
+4. **Provides the H17 ROM utility library at 1830H-1991H.** Heath's own
+   programs call `$TYPTX`, `$MOVE`, `$DADA`, `$MU86`, `$UDD` and others at
+   their ROM addresses (HDOS BASIC fails without them). The kernel keeps
+   that range free and puts an exact copy of the routines there
+   (`src/hdoscom/romlib.asm`).
+5. Points S.SCR (2151H) at a 512-byte scratch area. BASIC uses it.
 
-This means most HDOS programs never need a memory-mode switch.
+This means most HDOS programs never need a memory-mode switch. Only programs
+that call the monitor ROM (0000H-0FFFH, which is page zero in C-mode) or the
+H17 ROM's disk routines need H-mode.
 
 ### H-mode: ROM at 0000H
 
-Used only for HDOS programs that **call monitor or H17 ROM routines
-directly**, or read ROM contents. Programs are routed to H-mode by a
+Used only for HDOS programs that **call monitor ROM routines or the H17
+ROM's disk routines directly**, or read ROM contents. The H17 ROM's utility
+library is provided in C-mode (section 5). Programs are routed to H-mode by a
 compatibility list (`HCOS.CFG`, see section 9) or a command flag
 (`RUN /ROM PROG`).
 
@@ -203,10 +213,15 @@ code that runs during the switch must live in the kernel region.
 | File type | Detection | Load | Entry |
 |---|---|---|---|
 | `.COM` | extension | raw image at 0100H, up to kernel base | 0100H |
-| `.ABS` | extension, plus header byte 377Q and type 040Q **[VERIFY]** | header gives load address and length | header entry address |
+| `.ABS` | extension, plus header bytes 377Q, 000Q | header gives load address and length | header entry address |
 
-`.ABS` header (8 bytes) **[VERIFY]**: `377Q`, type `040Q`, load address (2),
-length (2), entry address (2).
+`.ABS` header (8 bytes): `377Q`, type `000Q`, load address (2), length (2),
+entry address (2). Checked against every `.ABS` on the HDOS 2.0 system disk.
+Most load at 2280H; `INIT.ABS` loads at 2480H, so the loader must honour the
+header. Length counts only the image, not the header.
+
+Heath listings write addresses in split octal (high byte.low byte): 2280H
+is `042.200`, which is **not** `042200Q` (that is 4480H).
 
 **Exit paths, all of which return to the kernel:**
 
@@ -344,14 +359,14 @@ Dispatcher on RST 7: pop the return address, fetch the inline function byte,
 skip it, then index a dispatch table. Errors return with carry set and A set
 to the HDOS error code (via the error map).
 
-Initial SCALL table **[VERIFY all numbers against HOSDEF]**:
+Initial SCALL table **[VERIFY numbers against HOSDEF; rows marked checked ran on real HDOS 2.0]**:
 
 | Octal | Name | Version 1 | Maps to |
 |---|---|---|---|
-| 000 | `.EXIT` | yes | kernel exit |
+| 000 | `.EXIT` | yes | kernel exit (checked) |
 | 001 | `.SCIN` | yes | console status/read (no wait) |
 | 002 | `.SCOUT` | yes | console out |
-| 003 | `.PRINT` | yes | print until bit 7 set |
+| 003 | `.PRINT` | yes | print from HL until a char with bit 7 set (checked) |
 | 004 | `.READ` | yes | KFB read N x 256 |
 | 005 | `.WRITE` | yes | KFB write N x 256 |
 | 006 | `.CONSL` | yes | console mode bytes in sys area |
@@ -383,9 +398,30 @@ Initial SCALL table **[VERIFY all numbers against HOSDEF]**:
 
 This is populated before every `.ABS` launch. It includes the RAM RST vector
 slots, console mode bytes, top-of-memory and system memory pointers, the
-version, the date, and the default device. **[VERIFY layout; this is the
-biggest single compatibility risk.]** The full layout will be specified in
-`docs/hdos-sysarea.md` once it has been checked against source.
+date, S.SCR, and S.JUMPS. The layout, with its sources, is in
+`src/inc/hdos.inc`. It was checked against a memory dump of HDOS 2.0 in
+the emulator and against the HDOS 3.0 decks.
+
+Programs poke these cells directly (EDIT writes S.CSLMD, SYSCMD writes
+S.CUSOR), so the console code keeps its state in them rather than in
+private variables.
+
+### 10.4 What phase 1 established
+
+Real HDOS 2.0 behaviour that the kernel must copy, all covered by
+differential tests (`tests/hdos/`):
+
+- `.VERS` returns 20H. Programs check it.
+- Command-line arguments are uppercased, NUL-terminated, and end at 227FH.
+  SP points at them.
+- `.OPENW` replaces the old file only at `.CLOSE`. `.EXIT` does `.CLEARA`,
+  so unclosed writes are discarded.
+- `.LINK` keeps SP and A, clears the ^A/^B/^C handlers, and leaves the file
+  open on channel −1.
+- ^A/^B/^C with no handler are ignored, not an abort. Handlers run when the
+  current SCALL returns, with A = 1 and a resume address on the stack.
+- CR is stored as NL. Rubout and ^U echo even with echo suppressed.
+- A `.READ` that hits the end returns EC.EOF with BC = the count not read.
 
 ---
 
@@ -413,19 +449,19 @@ be changed in `HCOS.CFG`.
 
 | # | Item | Source to check |
 |---|---|---|
-| V1 | H89 ORG-0 port/bit; H8 ORG-0 hardware | H89 manual, Heath CP/M BIOS |
-| V2 | ROM RST vector routing to 20xxH slots | MTR-90 / PAM-8 listings |
-| V3 | HDOS system area layout 2000H-227FH | HDOS 2.0 HOSDEF / source |
-| V4 | SCALL function numbers and register conventions | HOSDEF, Programmer's Guide |
-| V5 | `.ABS` header format | HDOS manual |
-| V6 | HDOS directory entry, GRT, label format | HDOS source / disk images |
-| V7 | HDOS channel numbering and count | HOSDEF |
-| V8 | HDOS error code list | HOSDEF (`EC.*`) |
+| V1 | H89 ORG-0 port/bit (MTRRAM: CB2.ORG = 20H in OP2.CTL); H8 ORG-0 hardware | H89 manual, Heath CP/M BIOS |
+| ~~V2~~ | ROM RST vector routing: **done**, `.UIVEC` = 201FH, RST 7 slot 2031H | HDOS 2.0 dump, HDOS 3.0 source |
+| ~~V3~~ | HDOS system area layout: **done**, `src/inc/hdos.inc` | HDOS 2.0 dump, ESVAL/ESINT/HOSEQU |
+| ~~V4~~ | SCALL numbers and conventions: **done** for every call HDOS.COM implements | HOSDEF, HDOS 3.0 listing, HDOS 2.0 disassembly, differential tests |
+| ~~V5~~ | `.ABS` header format: **done**, see section 6 | HDOS 2.0 system disk |
+| V6 | HDOS directory entry, GRT, label format | HDOS 3.0 decks (DIRDEF, LABDEF) / disk images |
+| ~~V7~~ | Channels: **done**, −1 to 5 (−1 = loaded program) | HDOS 3.0 listing, tests |
+| ~~V8~~ | Error codes: **done**, `src/inc/hdos.inc` | ECDEF |
 | V9 | CP/M DPBs for H17/H37 formats | Heath CP/M BIOS |
 | V10 | Console and clock port addresses | H8/H89 manuals |
 | Q1 | Synthetic Ctrl-Z for HDOS text files read via BDOS? | design decision |
 | Q2 | Support 48K machines? | depends on measured size |
-| Q3 | Assembler choice (zmac vs asl) and octal source style | toolchain decision |
+| ~~Q3~~ | Assembler: **zmac** in 8080 mode (`-8`), which rejects Z80-only opcodes. Hex by default, octal `Q` where Heath documents use octal | decided |
 
 ---
 
@@ -433,14 +469,20 @@ be changed in `HCOS.CFG`.
 
 | Phase | Deliverable | Proves |
 |---|---|---|
-| 0 | Toolchain, emulator setup ([lesbird/H89](https://github.com/lesbird/H89)), test disk images, build script | can build and boot |
-| 1 | **`HDOS.COM`** runs `.ABS` files under stock CP/M (C-mode, SCALL at 0038H, console and file SCALLs mapped to BDOS) | SCALL translation, sys area |
+| 0 | **Done.** Toolchain, emulator setup ([lesbird/H89](https://github.com/lesbird/H89)), test disk images, build script | can build and boot |
+| 1 | **Done.** **`HDOS.COM`** runs `.ABS` files under stock CP/M (C-mode, SCALL at 0038H, console and file SCALLs mapped to BDOS). HDOS BASIC runs. See [HDOSCOM.md](HDOSCOM.md) | SCALL translation, sys area |
+| 1b | `.LOADO` overlays; an HDOS view of the CP/M directory for S.GUP/DIRECT.SYS (PIP `/L`) | more of Heath's utilities |
 | 2 | HDOS FS read-only module inside `HDOS.COM` (raw BIOS sector access) | HDOS on-disk format |
 | 3 | HCOS resident kernel: KAPI, KFB, CP/M FS, BDOS personality, H17 driver, boots from disk | replaces CP/M |
 | 4 | SCALL personality moved into the kernel; HDOS FS read/write; HCCP | dual personality |
 | 5 | H-mode (ROM swap) + `ROMPROG` list | ROM-dependent programs |
 | 6 | H37 driver, HDOS 3.0 SCALLs, `.LOADO` overlays | broader compatibility |
 | 7 | (optional) `.DVD` loadable driver support | full HDOS parity |
+
+**References found so far:** HDOS 3.0 source and include decks, with
+assembled listings of HDOS, PIP, SYSCMD, EDIT and others, are in
+[mgarlanger/asmx](https://github.com/mgarlanger/asmx) (`testHdos/`).
+`acm2/` there has the HDOS 2.0 versions of the decks.
 
 **Test corpus** (to be assembled from SEBHC archives): MBASIC (both
 versions), the HDOS assembler and `PIE`, `ONECOPY`/`PIP`, Microsoft
