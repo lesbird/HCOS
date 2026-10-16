@@ -1,0 +1,133 @@
+HCOS (HDOS CP/M Operating System) - Research Notes
+==================================================
+Feasibility of a single operating system that runs both HDOS and CP/M
+programs on the Heathkit H8 / H89, written in 8080 assembly.
+
+Date: 2026-10-16
+Status: initial feasibility research. Items marked [VERIFY] are from
+memory and must be checked against original Heath / Digital Research
+documentation or source listings before being relied on.
+
+
+1. VERDICT
+----------
+Feasible. The two systems' programming interfaces do not collide; the
+real difficulty is the memory map (what lives at address 0000H), not
+the APIs.
+
+
+2. THE TWO APIs SIDE BY SIDE
+----------------------------
+                     CP/M 2.2                     HDOS
+  System call        CALL 0005H, function in C    RST 7 (SCALL, byte 377Q)
+                                                  + inline function byte
+  Program load addr  0100H (.COM, raw image)      2280H = 042.200 octal
+                                                  (.ABS, 8-byte header)
+  Low memory         RAM at 0000H (page zero)     ROM at 0000H-1FFFH,
+                                                  system area 2000H-227FH
+  File I/O           FCBs, 128-byte records       channels, 256-byte
+                                                  sector transfers
+  String output      terminated by '$'            last char has bit 7 set
+                                                  (e.g. 212Q = LF+200Q)
+  File names         B:NAME.EXT                   SY1:NAME.EXT
+  Error return       A = FFH / codes per call     carry set, A = error code
+
+Both use 8.3 file names, both support sequential and random access, and
+the console calls map almost 1:1. A layered design works: a shared kernel
+(file systems, disk drivers, console, memory) with two thin
+"personality" layers on top - a BDOS-compatible layer and an
+HDOS-SCALL-compatible layer.
+
+
+3. THE REAL PROBLEM: ADDRESS 0000H
+----------------------------------
+CP/M requires RAM in page zero (0000H-00FFH).
+
+HDOS programs expect the monitor ROM at 0000H (PAM-8 / MTR-88 / MTR-90)
+and on the H89 the H17 disk ROM at 1800H. Some HDOS programs call ROM
+routines directly. RST vectors pass through the ROM into RAM jump slots
+in the 2000H area.
+
+Solution used by Heath's own CP/M: the "ORG-0" hardware feature, which
+swaps RAM in over the ROM.
+  - H89: ORG-0 bit in the general-purpose output port 362Q (F2H). [VERIFY bit]
+  - H8:  requires the ORG-0 option (believed to be the HA8-8 Extended
+         Configuration board) or an equivalent modification. [VERIFY]
+
+Plan: switch memory mode per program.
+  - .COM -> ORG-0 RAM mode, build page zero, jump to 0100H.
+  - .ABS -> ROM mode (if needed), initialise 2000H system area,
+            point RST 7 at the SCALL dispatcher, jump to entry point.
+  - Resident kernel lives in high memory, identical in both modes.
+  - Kernel needs its own H17/H37 disk drivers (ROM is absent in
+    CP/M mode) - same requirement Heath's CP/M BIOS had.
+
+Rough memory picture:
+
+          CP/M mode (ORG-0 RAM)        HDOS mode (ROM in)
+  0000H   page zero: JMP WBOOT,     |  monitor ROM / H17 ROM
+          JMP BDOS, RST vectors     |  (RST 7 -> ROM -> 20xxH vector)
+  0100H   CP/M TPA ...              |
+  2000H   ... (TPA continues)       |  emulated HDOS system area
+  2280H   ...                       |  HDOS program area
+    ...                             |
+  xx00H  ====== shared resident kernel (same in both modes) ======
+          BDOS layer | SCALL layer | FS drivers | disk/console | loader
+  FFFFH
+
+
+4. WHERE THE EFFORT GOES (hardest first)
+----------------------------------------
+1. Exact HDOS compatibility. Real programs (MBASIC, assemblers, PIE,
+   games) read and write system-area variables directly, use .CTLC
+   handlers, .LINK chaining, overlays and console modes. Documented
+   SCALLs are the easy part; undocumented assumptions only show up in
+   testing with real software.
+2. Two file systems. HDOS: directory file + group reservation table,
+   cluster ("group") allocation. CP/M: directory + allocation bitmap
+   built at login. Support both on-disk formats in the kernel behind a
+   common file layer so either personality can open files on either
+   kind of disk.
+3. HDOS loadable device drivers (.DVD). Emulating the driver interface
+   is a sizeable job; defer - build devices in for version 1.
+4. Memory. CP/M CCP+BDOS+BIOS ~7-8K. With an HDOS layer and a second
+   file system, estimate 12-16K resident. 64K machine leaves ~48K CP/M
+   TPA. A 48K H8 would be tight.
+5. Interrupts. In CP/M mode the 2 ms clock interrupt (RST 1 at 0008H)
+   must be served from page-zero RAM; in HDOS mode it comes via the ROM
+   vector. DDT uses RST 7 for breakpoints, which conflicts with SCALL -
+   harmless as long as RST 7 belongs to whichever mode is active.
+
+Pure 8080 code (no Z80 opcodes) is required: the H8 has an 8080A, the
+H89 a Z80, and HDOS itself was 8080-only.
+
+
+5. SUGGESTED PATH (prove the hard part first)
+---------------------------------------------
+1. HDOS.COM - a CP/M program that loads an .ABS file at 2280H, builds a
+   fake system area at 2000H, installs a JMP at 0038H to a SCALL
+   dispatcher, and translates SCALLs into BDOS calls. Runs ROM-free HDOS
+   programs on stock CP/M and tests the API translation immediately.
+2. Add HDOS file-system support so it can read real HDOS disks.
+3. Promote it to a resident kernel: mode switching, ROM swap-in for
+   programs that need it, a combined command processor.
+
+
+6. TOOLS AND RESOURCES
+----------------------
+Cross assemblers with 8080 mode: zmac (8080 mode), Alfred Arnold's
+"asl" (CPU 8080).
+Emulators: Mark Garlanger's Virtual H89; Douglas Miller's H8/H89
+emulators.
+Community: SEBHC (Society of Eight-Bit Heath Computerists) - HDOS
+manuals, disk images, software archives, and possibly HDOS source
+listings. [VERIFY availability]
+Key reference documents to obtain:
+  - HDOS 2.0 System Programmer's Guide / HOSDEF (SCALL numbers, system
+    area layout, error codes)
+  - HDOS 3.0 documentation (later SCALL additions)
+  - Heath/Zenith CP/M 2.2 BIOS listings for H17/H37 (disk parameters,
+    ORG-0 handling)
+  - MTR-90 / MTR-88 / PAM-8 ROM listings (entry points and RST vector
+    routing)
+  - DRI CP/M 2.2 Interface Guide and Alteration Guide
