@@ -5,7 +5,8 @@
 # HDOS 2.0 and under HDOS.COM on Heath CP/M, and the screen text between
 # the {{ and }} markers must match. A test with "; ALSO: hdos" also runs
 # under HDOS.COM from an HDOS disk in B:, so its files are on that disk,
-# and must match too. Usage: difftest.sh [NAME...]
+# and must match too. "; HDOSFLAGS: /R" passes switches to HDOS.COM.
+# Usage: difftest.sh [NAME...]
 . "$(dirname "$0")/h89env.sh"
 
 B=$HCOS_DIR/build
@@ -49,6 +50,8 @@ for name in "$@"; do
     args=$(hdr ARGS "$src")
     keys=$(printf '%b' "$(hdr KEYS "$src")")    # \003 etc. become bytes
     wait=$(hdr WAIT "$src")
+    flags=$(hdr HDOSFLAGS "$src")             # for HDOS.COM, e.g. /R
+    flags=${flags:+$flags }
     wait=${wait:-\{\{}
     [ -n "$args" ] && args=" $args"
     prog=$(echo "$name" | tr a-z A-Z)
@@ -69,7 +72,7 @@ for name in "$@"; do
     "$H8DTOOL" put "$disk" "$B/hdos.com" "$abs" >/dev/null
     "$H89RUN" --disk0 "$disk" --seconds 120 \
         --step 'H: |B\r' \
-        --step "A>|HDOS $prog$args\r" ${keys:+--step "$wait|$keys"} \
+        --step "A>|HDOS $flags$prog$args\r" ${keys:+--step "$wait|$keys"} \
         --expect '}}' >"$WORK/$name-cpm.screen" 2>&1
     between "$WORK/$name-cpm.screen" >"$WORK/$name-cpm.out"
 
@@ -85,7 +88,7 @@ for name in "$@"; do
         "$H8DTOOL" put "$disk1" "$abs" >/dev/null
         "$H89RUN" --disk0 "$disk" --disk1 "$disk1" --seconds 120 \
             --step 'H: |B\r' --step 'A>|B:\r' \
-            --step "B>|A:HDOS $prog$args\r" ${keys:+--step "$wait|$keys"} \
+            --step "B>|A:HDOS $flags$prog$args\r" ${keys:+--step "$wait|$keys"} \
             --expect '}}' >"$WORK/$name-b.screen" 2>&1
         between "$WORK/$name-b.screen" >"$WORK/$name-b.out"
         check "$name-on-hdos-disk" b

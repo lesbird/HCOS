@@ -54,14 +54,18 @@ st1:	mov	a,m			; skip blanks
 	jmp	st1
 st2:	ora	a
 	jz	usage
-	cpi	'/'			; /T: trace
+	cpi	'/'			; /T: trace, /R: ROM (H-mode)
 	jnz	st2a
 	inx	h
 	mov	a,m
-	cpi	'T'
-	jnz	usage
-	sta	trace
 	inx	h
+	cpi	'T'
+	jz	st2t
+	cpi	'R'
+	jnz	usage
+	sta	hmode
+	jmp	st1
+st2t:	sta	trace
 	jmp	st1
 st2a:	shld	pname
 st3:	mov	a,m			; find the end of the name
@@ -77,6 +81,9 @@ st4:	shld	pargs			; args start at the blank (or NUL)
 	shld	pnend
 	sta	pnchr
 
+	lda	hmode			; H-mode by HCOS.CFG?
+	ora	a
+	cz	romprog
 	call	sysinit			; system area and page zero
 
 	lhld	pname
@@ -103,8 +110,8 @@ ldfail:	push	psw
 	call	perror
 	jmp	hexit
 
-musage:	db	'HDOS.COM - run an HDOS program: HDOS NAME [args]',0dh,0ah,'$'
-mnoload: db	'HDOS: can''t load program: $'
+musage:	db	'HDOS [/R] [/T] NAME [args]',0dh,0ah,'$'
+mnoload: db	'HDOS: can''t load: $'
 
 ; ---- Exit ----
 
@@ -135,3 +142,4 @@ pnend:	dw	0			; end of the name
 pnchr:	db	0			; char that was at the end of the name
 pargs:	dw	0			; arguments
 trace:	db	0			; <>0: trace SCALLs
+hmode:	db	0			; <>0: run with the ROM in (H-mode)

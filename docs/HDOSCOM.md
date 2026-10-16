@@ -8,14 +8,16 @@ HDOS system area and the HDOS file system before they move into the HCOS
 kernel.
 
 ```
-A>HDOS [/T] PROG [args]
+A>HDOS [/T] [/R] PROG [args]
 ```
 
 - `PROG` is an HDOS file name; the default type is `.ABS`. It can be on a
   CP/M disk or an HDOS disk (`HDOS SY1:BASIC`).
 - `args` are passed to the program as HDOS's command processor passes them.
-- `/T` traces every SCALL on the console as `[fff A=hh]`: the function in
-  octal and A in hex.
+- `/T` traces every SCALL on the console as `[fff A=ooo]`, in octal.
+- `/R` runs the program in **H-mode**, with the monitor ROM in at 0000H
+  (below). A line `ROMPROG NAME` in `HCOS.CFG` does the same for NAME.
+  `HCOS.CFG` is looked for on the current drive, then A:.
 
 Under HCOS you don't type `HDOS`: HCCP runs `NAME.ABS` through
 `A:HDOS.COM` when there is no `NAME.COM` ([KERNEL.md](KERNEL.md)).
@@ -122,6 +124,36 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
   them at the same addresses. Its assembled bytes are identical to the 444-19
   ROM over that range.
 
+## H-mode (phase 5)
+
+For HDOS programs that call the monitor ROM (`.DLY` at 002BH, or the
+PAM-8 routines on an H8) or read it, HDOS.COM can run them with the ROM
+switched in, as on real HDOS.
+
+Port 362Q (F2H) bit 5 maps RAM over 0000H-1FFFH; CP/M runs with it on.
+In H-mode:
+
+- **The ROM is visible.** 0000H-0FFFH is the monitor ROM, 1400H-17FFH is
+  the H17's own RAM, and 1800H-1FFFH is the H17 ROM. HDOS.COM's code is
+  under the ROM, so the mode switches are three small pieces of code in
+  HDOS's AIO work area at 2121H, which programs don't use:
+  - `TRIN`: the ROM's RST 7 jumps through the 2031H slot to here. It maps
+    RAM in and enters the dispatcher.
+  - `TROUT`: every way back to the program goes through here: SCALL
+    returns, starting the program, `.LINK`, and ^C handlers. It maps the
+    ROM back in. In C-mode it is just a RET.
+  - `TRRES`: a ^C handler's way back into the program.
+- **Monitor cells:** the monitor RAM is set as HDOS 2.0 sets it (.MFLAG,
+  .CTLFLG, .CTL2FL). The ROM's clock handler counts ticks, and the ROM
+  handles the NMIs from H8 front-panel port accesses.
+- **SCALLs run in C-mode,** through the CP/M BIOS, so a SCALL's data
+  buffer below 2000H means RAM, not ROM. A program that writes ROM
+  contents to a file has to copy them first.
+
+Tested against real HDOS with `rommode` (ROM bytes, `.DLY`, the ROM's
+`$TYPTX`, file SCALLs) and `rctlc` (a ^C handler in H-mode). Also tested:
+`ROMPROG`, both with `HDOS NAME` and from the HCOS prompt.
+
 ## Not supported yet
 
 - **`.LOADO`** succeeds, as on HDOS 3.0: everything is resident already.
@@ -137,8 +169,9 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
   lists with the unit as a binary byte ("SY\x01:DIRECT.SYS"). Real HDOS
   rejects that, so `PIP SY1:/L` fails there with "Device Format Error".
   HDOS.COM accepts it, so PIP can list any unit.
-- **Programs that call the monitor ROM** (0000H-0FFFH), which is CP/M's
-  page zero here. These need H-mode (phase 5).
+- **The H17 ROM's disk routines** (R.READ and so on, used by INIT,
+  SYSGEN and TEST17). They drive the controller directly, behind the CP/M
+  BIOS's back, and need HDOS's disk tables set up.
 - **Clock:** HDOS.COM counts ticks in .TICCNT. Program clock hooks (UO.CLK
   and the RST 1 slot) are not called, and S.TIME is not kept. The date is
   fixed at 01-Jan-80.

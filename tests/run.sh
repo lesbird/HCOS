@@ -90,6 +90,17 @@ run_test run-from-hdos cpm+hdos 'BASIC FROM SY1:' \
     "$B/hdos.com" -- \
     --step 'A>|HDOS SY1:BASIC\r' --step '\n*|PRINT "BASIC FROM SY1:"\r'
 
+# H-mode chosen by HCOS.CFG ("ROMPROG NAME"), with no /R.
+printf 'ROMPROG ROMMODE\r\n\032' >"$WORK/HCOS.CFG"
+run_test romprog cpm 'ROM C3 00 04 21 DLY OK' \
+    "$B/hdos.com" "$B/hdos/rommode.abs" "$WORK/HCOS.CFG" -- \
+    --step 'A>|HDOS ROMMODE\r'
+if [ "$CPMDISK" = hcos ]; then
+    run_test romprog-at-prompt hcos 'ROM C3 00 04 21 DLY OK' \
+        "$B/hdos.com" "$B/hdos/rommode.abs" "$WORK/HCOS.CFG" -- \
+        --step 'A>|ROMMODE\r'
+fi
+
 # HCOS only: HCCP runs HDOS programs; CP/M programs use HDOS disks
 # through the kernel extension, and real HDOS reads what they wrote.
 if [ "$CPMDISK" = hcos ]; then

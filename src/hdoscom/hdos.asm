@@ -1,8 +1,9 @@
 ; hdos.asm - HDOS.COM: run HDOS 2.0 .ABS programs under CP/M 2.2
 ;
-;	A>HDOS [/T] PROG [args]
+;	A>HDOS [/T] [/R] PROG [args]
 ;
-; /T traces every SCALL on the console: [fff A=aa] in octal and hex.
+; /T traces every SCALL on the console: [fff A=ooo], in octal.
+; /R runs the program in H-mode, with the monitor ROM in at 0000H.
 ;
 ; Loads PROG.ABS at the address in its header, builds the HDOS system
 ; area at 2000H-227FH, points RST 7 at the SCALL dispatcher and runs
@@ -50,12 +51,14 @@ HISIZE	equ	(HI.CMD+129+255) and 0FF00h
 	org	ROMLIBE
 	include	syndir.asm
 	include	hdoswr.asm
+	include	systab.asm
 
 ; ---- Buffers (not stored in HDOS.COM) ----
-errfcb:	ds	FCBLEN
+errfcb	equ	DFCB			; CP/M's default FCB is free once
+tmpfcb2	equ	DFCB			; HDOS.COM runs; .ERROR and the
+					; others never overlap
 tmpfcb:	ds	FCBLEN
-tmpfcb2: ds	FCBLEN
-	ds	128
+	ds	96			; (BDOS calls use the BDOS's stack)
 hcstk	equ	$			; HDOS.COM's own stack
 
 HCEND	equ	$

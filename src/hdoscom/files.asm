@@ -1148,7 +1148,7 @@ slink:	mov	b,d
 	push	h
 	lda	sca
 	ei
-	ret
+	jmp	TROUT
 
 ; ---- .ERROR: A = error code, H = char to print after the message ----
 ; The message comes from ERRORMSG.SYS (lines "NNNtext"), looked for on
@@ -1175,6 +1175,8 @@ er2:	inr	b
 	mov	a,b
 	sta	errd+1
 
+	lxi	h,errnam
+	shld	ernamp
 	xra	a			; current drive, then A:
 	call	eropen
 	jnc	er3
@@ -1235,11 +1237,15 @@ er.end:	lda	errh
 perror:	mvi	h,NL
 	jmp	serror
 
-; eropen - open ERRORMSG.SYS on drive A (0 = current). CY if absent.
+; eropen - open the file named at ernamp (ERRORMSG.SYS, HCOS.CFG) on
+; drive A (0 = current). CY if absent.
 eropen:	lxi	h,errfcb
 	mov	m,a
 	inx	h
-	lxi	d,errnam
+	push	h
+	lhld	ernamp
+	xchg
+	pop	h
 	xchg
 	mvi	b,11
 	call	move
@@ -1300,28 +1306,60 @@ coutz:	mov	a,m
 	inx	h
 	jmp	coutz
 
-; phexo - print A as 3 octal digits through BDOS (for diagnostics).
-phexo:	push	psw
-	rlc
-	rlc
-	ani	3
-	call	phexo1
-	pop	psw
-	push	psw
-	rrc
-	rrc
-	rrc
-	ani	7
-	call	phexo1
-	pop	psw
-	ani	7
-phexo1:	adi	'0'
-	mov	e,a
-	mvi	c,C_WRITE
-	jmp	BDOS
-
 mernum:	db	'?02 Error # ',0
 errnam:	db	'ERRORMSGSYS'
+ernamp:	dw	errnam
+
+; romprog - H-mode if HCOS.CFG (current drive, then A:) has a line
+; "ROMPROG NAME" for this program.
+romprog: lxi	h,cfgnam
+	shld	ernamp
+	xra	a
+	call	eropen
+	jnc	rp2
+	mvi	a,1
+	call	eropen
+	rc
+rp2:	lxi	h,mrprog		; "ROMPROG " at the start of a line
+rp3:	push	h
+	call	ergetc
+	pop	h
+	rc
+	call	ucase
+	cmp	m
+	jnz	rp5
+	inx	h
+	mov	a,m
+	ora	a
+	jnz	rp3
+	lhld	pname			; then this program's name
+rp4:	mov	a,m
+	cpi	' '+1
+	jc	rp6
+	push	h
+	call	ergetc
+	pop	h
+	rc
+	call	ucase
+	cmp	m
+	jnz	rp5
+	inx	h
+	jmp	rp4
+rp6:	call	ergetc			; and nothing more on the line
+	jc	rp7
+	cpi	' '+1
+	jnc	rp5
+rp7:	mvi	a,1
+	sta	hmode
+	ret
+rp5:	cpi	0Ah			; skip to the next line
+	jz	rp2
+	call	ergetc
+	rc
+	jmp	rp5
+
+cfgnam:	db	'HCOS    CFG'
+mrprog:	db	'ROMPROG ',0
 zdef:	db	0,0,0,0,0,0
 
 ; ---- Data ----

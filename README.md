@@ -4,12 +4,14 @@ A single operating system for the Heathkit H8 and H89 that runs both
 **HDOS** (`.ABS`) and **CP/M 2.2** (`.COM`) programs, written in pure 8080
 assembly.
 
-Status: phases 1-4 done. **HCOS boots from disk** on its own BDOS and
+Status: phases 1-5 done. **HCOS boots from disk** on its own BDOS and
 command processor ([KERNEL.md](docs/KERNEL.md)):
 
 - CP/M programs run as on CP/M 2.2.
 - Typing an HDOS program's name runs it (`A>BASIC` runs BASIC.ABS).
 - CP/M programs such as PIP can read and write real HDOS disks.
+- HDOS programs that call the monitor ROM run with the ROM switched in
+  (H-mode).
 
 HDOS.COM, the HDOS personality, also runs on plain CP/M 2.2
 ([HDOSCOM.md](docs/HDOSCOM.md)).

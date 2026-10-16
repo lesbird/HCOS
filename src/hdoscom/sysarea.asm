@@ -7,6 +7,19 @@
 RST1	equ	0008h
 RST7	equ	0038h
 .MFLAG	equ	2008h		; monitor user option byte
+.CTLFLG	equ	2009h		; monitor front panel control byte
+.CTL2FL	equ	2036h		; monitor OP2.CTL (port 362Q) byte
+GPP	equ	0F2h		; port 362Q: bit 5 maps RAM over the ROM
+GPP.RAM	equ	22h		; C-mode: RAM at 0000H, clock on (as the BIOS)
+GPP.ROM	equ	02h		; H-mode: ROM at 0000H, clock on
+
+; H-mode switching code, in HDOS's AIO work area (S.INT), which
+; programs don't use: HDOS.COM itself is under the ROM in H-mode.
+TRIN	equ	2121h		; RST 7 through the ROM: RAM in, dispatch
+TROUT	equ	TRIN+9		; back to the program: ROM in, RET
+				; (in C-mode just a RET)
+TRRES	equ	TROUT+7		; a ^A/^B/^C handler's way back: POP PSW,
+				; RET (it must be outside the ROM too)
 UIV.CLK	equ	.UIVEC		; RST 1 slot
 UIV.SC	equ	.UIVEC+18	; RST 7 slot
 
@@ -66,6 +79,24 @@ si3:	mvi	m,0C3h
 	lhld	psscr			; scratch area
 	shld	S.SCR
 
+	lxi	h,trtab			; mode switching code
+	lxi	d,TRIN
+	mvi	b,trlen
+	call	move
+	lda	hmode
+	ora	a
+	jnz	si4
+	mvi	a,0C9h			; C-mode: TROUT is a RET
+	sta	TROUT
+	jmp	si5
+si4:	lxi	h,TRIN			; H-mode: the ROM's RST 7 comes to
+	shld	UIV.SC+1		; TRIN; monitor set as HDOS sets it
+	mvi	a,80h
+	sta	.MFLAG
+	sta	.CTL2FL
+	mvi	a,0D0h
+	sta	.CTLFLG
+si5:
 	lxi	h,sexita		; S.EXITA: XRA A / SCALL .EXIT
 	lxi	d,S.EXITA
 	mvi	b,sexital
@@ -161,8 +192,9 @@ la2c:	mov	h,b
 	jmp	la4
 la3:	lxi	h,STACK
 la4:	sphl
-	lhld	pentry
-	pchl
+	lhld	pentry			; (through TROUT: ROM in for H-mode)
+	push	h
+	jmp	TROUT
 
 ; Clock tick: count it in .TICCNT as the monitor ROM does, then let
 ; the CP/M BIOS handle the interrupt.
@@ -188,6 +220,21 @@ move:	mov	a,m
 	dcr	b
 	jnz	move
 	ret
+
+; Copied to TRIN: entering an SCALL from H-mode, and leaving one.
+trtab:	push	psw
+	mvi	a,GPP.RAM
+	out	GPP
+	pop	psw
+	jmp	scdisp
+	push	psw
+	mvi	a,GPP.ROM
+	out	GPP
+	pop	psw
+	ret
+	pop	psw			; TRRES
+	ret
+trlen	equ	$-trtab
 
 sexita:	xra	a
 	SCALL	.EXIT
@@ -223,30 +270,13 @@ sjump:	lxi	sp,hcstk
 	mvi	c,C_WRITESTR
 	call	BDOS
 	jmp	hexit
-msjump:	db	0dh,0ah,'HDOS.COM: program called HDOS internals: $'
+msjump:	db	0dh,0ah,'HDOS.COM: no $'
 sjnam:	db	'S.SDD',0dh,0ah,'$'
 	db	'S.FASER$'
 	db	'S.DIREA$'
 	db	'S.FCI',0dh,0ah,'$'
 	db	'S.SCI',0dh,0ah,'$'
 	db	'S.GUP',0dh,0ah,'$'
-
-; S.GUP - HL -> a unit table pointer (DEV.UNT), A = unit: HL -> that
-; unit's entry. Uses F, H, L.
-gup:	push	psw
-	mov	a,m
-	inx	h
-	mov	h,m
-	mov	l,a
-	pop	psw
-	push	psw
-	ani	7
-	rlc
-	rlc
-	rlc
-	call	rdadap
-	pop	psw
-	ret
 
 ; Device table (DEVDEF): name, residence, JMP driver, flags, mounted
 ; unit mask, units, -> unit table, driver length and group. SY: and
@@ -274,21 +304,6 @@ devtab:	db	'SY',DR.IMPR,0C3h
 	dw	chrunt,0
 	db	0
 	db	0			; end
-chrunt:	db	DT.CHR,0
-	dw	0,0,0
-
-; Overlay table: both HDOS overlays in memory and resident, as they
-; are in effect (PIP reads OVL.FLB).
-ovltab:	dw	0,0,0
-	db	3,0
-	dw	0,0,0
-	db	3,0
-
-; A program called a device driver directly: not supported.
-ddrv.x:	mvi	a,EC.DDA
-	stc
-	ret
-
 svrst1:	ds	3			; CP/M's page zero RST 1 and RST 7
 svrst7:	ds	3
 

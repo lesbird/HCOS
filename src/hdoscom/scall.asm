@@ -78,7 +78,7 @@ scret:	shld	schl
 	jnz	scabt
 	pop	psw
 	lhld	schl
-	ret
+	jmp	TROUT			; (H-mode: ROM in again)
 
 ; Run the pending handler, as HDOS's CPA does. It is entered with
 ; A = 1 and the program's BC, DE, HL; on its stack are a return
@@ -88,15 +88,13 @@ scabt:	lhld	S.CAADR
 	shld	schand
 	xra	a
 	sta	S.CAADR+1
-	lxi	h,scres
+	lxi	h,TRRES			; (resumes the program)
 	push	h
 	lhld	schand
 	push	h
 	lhld	schl
 	mvi	a,1
-	ret				; to the handler
-scres:	pop	psw
-	ret
+	jmp	TROUT			; to the handler
 
 scbad:	lxi	h,scill			; illegal function
 	jmp	scgo
@@ -148,45 +146,7 @@ scnyi:	push	h
 	stc
 	ret
 
-; sctrace - print "[fff A=hh]" for the SCALL being made.
-sctrace: push	b
-	push	d
-	mvi	e,'['
-	mvi	c,C_WRITE
-	call	BDOS
-	lda	scfn
-	call	phexo
-	lxi	d,mtra
-	mvi	c,C_WRITESTR
-	call	BDOS
-	lda	sca
-	call	phexb
-	mvi	e,']'
-	mvi	c,C_WRITE
-	call	BDOS
-	pop	d
-	pop	b
-	ret
-mtra:	db	' A=$'
-
-; phexb - print A as 2 hex digits through BDOS.
-phexb:	push	psw
-	rrc
-	rrc
-	rrc
-	rrc
-	call	phexb1
-	pop	psw
-phexb1:	ani	0fh
-	adi	90h
-	daa
-	aci	40h
-	daa
-	mov	e,a
-	mvi	c,C_WRITE
-	jmp	BDOS
-
-mnyi:	db	0dh,0ah,'HDOS.COM: SCALL not implemented: $'
+mnyi:	db	0dh,0ah,'HDOS.COM: no SCALL $'
 mcrlf:	db	0dh,0ah,'$'
 
 ; Resident functions 000-013.
