@@ -109,7 +109,9 @@ hrename: push	h
 	lxi	b,zdef			; new name: no defaults, and any
 	call	decode			; device in it is ignored
 	rc
-	lda	dnam+3
+; hren2 - the same, with the new name already in dnam (and the old in
+; hrold).
+hren2:	lda	dnam+3
 	ora	a
 	mvi	a,EC.IFN
 	stc

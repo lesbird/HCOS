@@ -101,8 +101,14 @@ rsh1:	call	bcall
 	stc
 	ret
 
-; bdsel - select BDOS's current drive in the BIOS again.
-bdsel:	mvi	c,DRV_GET
+; bdsel - select BDOS's current drive in the BIOS again. (Not in the
+; kernel extension: it is called from inside the BDOS, which selects
+; the drive again itself.)
+bdsel:
+	if	KX
+	ret
+	endif
+	mvi	c,DRV_GET
 	call	BDOS
 	mov	c,a
 	mvi	e,1			; already logged in

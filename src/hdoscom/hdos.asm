@@ -17,6 +17,9 @@
 	include	cpm.inc
 	include	hdos.inc
 
+KX	equ	0			; (not the kernel extension)
+HDATE	equ	S.DATC			; date for new HDOS files
+
 	org	TPA
 	jmp	start
 

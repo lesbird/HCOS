@@ -1,9 +1,10 @@
-# SUBMIT: a batch file (made with ED) run through $$$.SUB.
+# SUBMIT: a batch file (made with ED) run through $$$.SUB. The batch
+# checks its own result, so nothing is typed while it runs.
 A>|ED S.SUB\r
 *|I\r
-|DIR $1\rSTAT $1\rERA $2\r\032
+|DIR $1\rSTAT $1\rERA $2\rDIR $2\r\032
 *|E\r
 A>|SAVE 1 GONE.COM\r
 A>|SUBMIT S *.SUB GONE.COM\r
-A>ERA GONE.COM|
-A>|DIR GONE.COM\r
+A>DIR GONE.COM|
+NO FILE|

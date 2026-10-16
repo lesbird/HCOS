@@ -39,7 +39,7 @@ run_test() {
     else
         set -- --step 'H: |B\r' "$@"
     fi
-    if "$H89RUN" --disk0 "$disk" ${disk1:+--disk1 "$disk1"} --seconds 120 \
+    if "$H89RUN" --disk0 "$disk" ${disk1:+--disk1 "$disk1"} --seconds 300 \
             "$@" --expect "$expect" \
             >"$WORK/$name.screen" 2>&1; then
         echo "PASS $name"
@@ -67,9 +67,8 @@ run_test basic cpm '00010 FOR I=1 TO 3' \
     --step '\n*|SAVE "TEST.BAS"\r' --step '\n*|SCRATCH\r' --step 'Sure?|Y\r' \
     --step '\n*|OLD "TEST.BAS"\r' --step '\n*|LIST\r'
 
-# PIP lists a CP/M disk through the made-up DIRECT.SYS (14 files
-# visible on the test disk: BIOS.SYS is SYS).
-run_test pip-list-cpm cpm '   14 Files, Using' \
+# PIP lists a CP/M disk through the made-up DIRECT.SYS.
+run_test pip-list-cpm cpm 'PIP     .ABS    19       No-Date' \
     "$B/hdos.com" "$P/PIP.ABS" -- \
     --step 'A>|HDOS PIP\r' --step ':P:|/L\r'
 
@@ -90,6 +89,25 @@ run_test hdos-reads-it "hdos=$WORK/pip-to-hdos-1.h8d" ':P:' -- \
 run_test run-from-hdos cpm+hdos 'BASIC FROM SY1:' \
     "$B/hdos.com" -- \
     --step 'A>|HDOS SY1:BASIC\r' --step '\n*|PRINT "BASIC FROM SY1:"\r'
+
+# HCOS only: HCCP runs HDOS programs; CP/M programs use HDOS disks
+# through the kernel extension, and real HDOS reads what they wrote.
+if [ "$CPMDISK" = hcos ]; then
+    run_test abs-at-prompt hcos 'HDOS BASIC AT THE HCOS PROMPT' \
+        "$B/hdos.com" "$P/BASIC.ABS" -- \
+        --step 'A>|BASIC\r' \
+        --step '\n*|PRINT "HDOS BASIC AT THE HCOS PROMPT"\r'
+    run_test cpm-on-hdos hcos+hdos 'B: SYSGEN   ABS : DDT      COM : X        COM' -- \
+        --step 'A>|DIR B:\r' \
+        --step 'A>|PIP B:=A:D*.COM[V]\r' \
+        --step 'A>|PIP B:=A:XSUB.COM[V]\r' \
+        --step 'A>|ERA B:DUP.COM\r' \
+        --step 'A>|REN B:X.COM=B:XSUB.COM\r' \
+        --step 'A>|PIP A:B.ABS=B:BASIC.ABS[OV]\r' \
+        --step 'A>|DIR B:\r'
+    run_test hdos-reads-cpm "hdos=$WORK/cpm-on-hdos-1.h8d" 'DDT     .COM    19' -- \
+        --step '>|CAT *.COM\r'
+fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

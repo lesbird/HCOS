@@ -3,6 +3,7 @@
 # The emulator tests need a built H89 checkout (see tests/h89env.sh).
 
 ZMAC   = tools/zmac/src/zmac
+H89DIR ?= ../H89
 ZFLAGS = -8 -I src/inc
 B      = build
 INC    = $(wildcard src/inc/*.inc)
@@ -14,7 +15,7 @@ HDOSCOM = $(B)/hdos.com
 
 .PHONY: all tools test test-cpm test-hcos hcos disks clean
 
-all: $(HDOSCOM) $(SMOKE) $(HDOSTESTS) $(CPMTESTS) $(B)/kernel/bdos.cim
+all: $(HDOSCOM) $(SMOKE) $(HDOSTESTS) $(CPMTESTS) $(KERNEL)
 
 tools: $(ZMAC)
 
@@ -37,13 +38,19 @@ $(B)/cpm/%.cim: tests/cpm/%.asm $(INC) tests/cpm/test.inc | $(ZMAC)
 $(B)/hdos/%.cim: tests/hdos/%.asm $(INC) tests/hdos/test.inc | $(ZMAC)
 	$(assemble)
 
-# The HCOS kernel (phase 3: the BDOS) and a boot disk with it.
-$(B)/kernel/bdos.cim: src/kernel/bdos.asm $(wildcard src/kernel/*.asm) $(INC) | $(ZMAC)
+# The HCOS kernel: BDOS and HCCP in the system tracks, and a boot disk
+# with them.
+$(B)/kernel/%.cim: src/kernel/%.asm $(wildcard src/kernel/*.asm src/hdoscom/*.asm) $(INC) | $(ZMAC)
 	@mkdir -p $(@D)
-	$(ZMAC) $(ZFLAGS) -I src/kernel --oo cim,lst -o $@ -o $(@:.cim=.lst) $<
+	$(ZMAC) $(ZFLAGS) -I src/kernel -I src/hdoscom --oo cim,lst -o $@ -o $(@:.cim=.lst) $<
 
-$(B)/disks/hcos.h8d: $(B)/disks/hdos.h8d $(B)/kernel/bdos.cim tools/sysgen.py
-	python3 tools/sysgen.py $(B)/disks/cpm.h8d $(B)/kernel/bdos.cim $@
+KERNEL = $(B)/kernel/bdos.cim $(B)/kernel/hccp.cim $(B)/kernel/kext.cim
+
+$(B)/disks/hcos.h8d: $(B)/disks/hdos.h8d $(KERNEL) tools/sysgen.py
+	python3 tools/sysgen.py $(B)/disks/cpm.h8d $@ \
+	    --bdos $(B)/kernel/bdos.cim --ccp $(B)/kernel/hccp.cim
+	cp $(B)/kernel/kext.cim $(B)/kernel/HCOS.SYS
+	$(H89DIR)/build/h8dtool put $@ $(B)/kernel/HCOS.SYS >/dev/null
 
 $(B)/hdos.cim: src/hdoscom/hdos.asm $(wildcard src/hdoscom/*.asm) $(INC) | $(ZMAC)
 	$(assemble)

@@ -13,6 +13,7 @@
 
 	.8080
 	include	cpm.inc
+	include	hcos.inc
 
 BDOSB	equ	0E200h		; base, as the BIOS and CCP expect
 LOADEND	equ	0EF80h		; end of what the boot loader loads
@@ -70,6 +71,12 @@ bdose:	jmp	bdent		; entry, BDOSB+6
 	; Error vectors at the same place as DRI's (some programs patch
 	; them): bad sector, select, R/O disk, R/O file.
 	dw	perr,selerr,roderr,roferr
+	; Hook for the kernel extension (KXVEC): HCCP puts a JMP to it
+	; here at every boot. It is offered each FCB call; CY = not its.
+kxv:	stc
+	ret
+	nop
+	assert	kxv == KXVEC
 
 ; ---- Entry and exit ----
 
@@ -88,6 +95,7 @@ bdent:	xchg
 	lxi	h,goback
 	push	h
 	mov	a,c
+	sta	fnum
 	cpi	NFUNC
 	rnc
 	mov	c,e			; C = byte parameter
@@ -538,6 +546,7 @@ cmpde:	mov	a,h
 ; ---- Variables (not loaded; set up by f13 and the first call) ----
 
 info:	ds	2			; DE at the call
+fnum:	ds	1			; function number
 linfo:	ds	1			; E at the call
 aret:	ds	2			; result
 entsp:	ds	2			; caller's SP

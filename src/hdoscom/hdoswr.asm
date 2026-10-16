@@ -236,7 +236,7 @@ hcl.n:	call	dirslot			; a free entry
 	lxi	d,DIR.CRD
 	dad	d
 	xchg
-	lhld	S.DATC
+	lhld	HDATE
 	xchg
 	mov	m,e
 	inx	h
@@ -252,7 +252,7 @@ hcl.d:	lhld	hent			; altered today
 	lxi	d,DIR.ALD
 	dad	d
 	xchg
-	lhld	S.DATC
+	lhld	HDATE
 	xchg
 	mov	m,e
 	inx	h

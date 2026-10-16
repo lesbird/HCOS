@@ -528,7 +528,8 @@ sn.ok:	pop	h
 
 ; f17 / f18 - search first / next: the directory record goes to the
 ; DMA address; returns the entry's number in it (0-3), or FFH.
-f17:	lhld	info
+f17:	lhld	info			; (for f18, even if the kernel
+	shld	srinfo			; extension does the search)
 	mov	a,m
 	cpi	'?'			; "?" drive: every entry
 	mvi	c,0
@@ -571,7 +572,20 @@ reselect:
 	dcr	a
 	jp	rs1
 	lda	curdsk			; 0: the current drive
-rs1:	push	psw
+rs1:	push	psw			; the kernel extension's? (HDOS
+	lda	fnum			; disks)
+	mov	c,a
+	lhld	info
+	xchg
+	lhld	dma
+	pop	psw
+	push	psw
+	call	KXVEC
+	jc	rsx
+	sta	aret			; done there
+	jmp	retmon
+rsx:	pop	psw
+	push	psw
 	lda	curdsk
 	sta	olddsk
 	mvi	a,1

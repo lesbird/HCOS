@@ -17,6 +17,9 @@ A>HDOS [/T] PROG [args]
 - `/T` traces every SCALL on the console as `[fff A=hh]`: the function in
   octal and A in hex.
 
+Under HCOS you don't type `HDOS`: HCCP runs `NAME.ABS` through
+`A:HDOS.COM` when there is no `NAME.COM` ([KERNEL.md](KERNEL.md)).
+
 ## What runs
 
 Checked in the H89 emulator on Heath CP/M 2.2.03:

@@ -29,12 +29,20 @@ if [ $# -eq 0 ]; then
     set -- $(cd "$HCOS_DIR/tests/cpm" && ls *.asm *.steps | sed 's/\.[a-z]*$//')
 fi
 
+# samefiles OS DISK - the HCOS disk has HCOS.SYS on it: give the CP/M
+# disk the same file, so both directories are alike.
+samefiles() {
+    [ "$1" = cpm ] && "$H8DTOOL" put "$2" "$B/kernel/HCOS.SYS" >/dev/null
+    return 0
+}
+
 # A session from NAME.steps, on both systems.
 steps_test() {
     name=$1
     for os in cpm hcos; do
         disk=$WORK/$name-$os.h8d
         cp "$B/disks/$os.h8d" "$disk"
+        samefiles "$os" "$disk"
         set -- --step 'H: |B\r'
         while IFS= read -r line; do
             case $line in
@@ -82,6 +90,7 @@ for name in "$@"; do
     for os in cpm hcos; do
         disk=$WORK/$name-$os.h8d
         cp "$B/disks/$os.h8d" "$disk"
+        samefiles "$os" "$disk"
         "$H8DTOOL" put "$disk" "$com" >/dev/null
         "$H89RUN" --disk0 "$disk" --seconds 120 \
             --step 'H: |B\r' \

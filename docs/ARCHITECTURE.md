@@ -3,8 +3,8 @@
 **HCOS** (HDOS CP/M Operating System): an operating system for the Heathkit H8 and H89 that runs both
 **HDOS** (`.ABS`) and **CP/M 2.2** (`.COM`) programs, written in 8080 assembly.
 
-- Status: **Draft 0.4**, 2026-10-16. Phases 1, 1b, 2 and 2b (HDOS.COM) and 3
-  (the kernel's BDOS, booting from disk) are done; see
+- Status: **Draft 0.5**, 2026-10-16. Phases 1-4 are done: HDOS.COM, and the
+  kernel (BDOS, HCCP, HCOS.SYS) booting from disk; see
   [HDOSCOM.md](HDOSCOM.md) and [KERNEL.md](KERNEL.md).
 - Background: [research-notes.txt](research-notes.txt)
 
@@ -476,7 +476,7 @@ be changed in `HCOS.CFG`.
 | 2 | **Done.** HDOS FS read-only module inside `HDOS.COM` (raw BIOS sector access): run, copy and list from real HDOS disks | HDOS on-disk format |
 | 2b | **Done.** Writing HDOS disks (GRT allocation, directory update) | full HDOS FS |
 | 3 | **Done** (see [KERNEL.md](KERNEL.md)). HCOS boots from disk on its own CP/M 2.2 BDOS, installed in the system tracks; drivers are the Heath BIOS. CP/M's own tools and all HDOS.COM tests pass on it | replaces CP/M |
-| 4 | SCALL personality moved into the kernel; HDOS FS read/write; HCCP | dual personality |
+| 4 | **Done** (see [KERNEL.md](KERNEL.md)). HCCP command processor (CP/M CCP compatible, runs `.ABS` through HDOS.COM); kernel extension HCOS.SYS with the HDOS file system, through which CP/M programs use HDOS disks (KFB). The SCALL personality stays a transient (HDOS.COM), loaded for `.ABS` programs, to keep the CP/M TPA large | dual personality |
 | 5 | H-mode (ROM swap) + `ROMPROG` list | ROM-dependent programs |
 | 6 | H37 driver, HDOS 3.0 SCALLs, `.LOADO` overlays | broader compatibility |
 | 7 | (optional) `.DVD` loadable driver support | full HDOS parity |

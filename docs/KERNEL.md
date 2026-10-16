@@ -1,14 +1,28 @@
 # The HCOS kernel
 
-Phase 3 of HCOS: **an operating system that boots from disk and runs CP/M
-2.2 programs on its own BDOS.** The BDOS is written from the CP/M 2.2
-interface (`src/kernel/`) and contains no DRI code. It replaces the DRI
-BDOS in the system tracks of a Heath CP/M disk, so it loads on every cold
-and warm boot.
+HCOS boots from disk and runs **both CP/M and HDOS programs**. Its parts,
+all in `src/kernel/`, are written from the CP/M 2.2 and HDOS interfaces
+and contain no DRI code:
+
+| Part | Where | Phase |
+|---|---|---|
+| **BDOS**: CP/M 2.2 file system and console | system tracks, E200H | 3 |
+| **HCCP**: the command processor | system tracks, DA00H | 4 |
+| **HCOS.SYS**: kernel extension, the HDOS file system for CP/M programs | file, loaded to C300H | 4 |
+| **HDOS.COM**: HDOS personality (SCALLs), loaded when an `.ABS` runs | file | 1-2b |
 
 ```sh
 make hcos      # build/disks/hcos.h8d: the test CP/M disk, booting HCOS
-python3 tools/sysgen.py YOUR.h8d build/kernel/bdos.cim OUT.h8d
+python3 tools/sysgen.py YOUR.h8d OUT.h8d --bdos build/kernel/bdos.cim \
+    --ccp build/kernel/hccp.cim      # then copy HCOS.SYS and HDOS.COM on
+```
+
+On an HCOS disk:
+
+```
+A>BASIC                 runs BASIC.COM, or else BASIC.ABS (through HDOS.COM)
+A>PIP A:=B:*.ABS[OV]    CP/M PIP copying from an HDOS disk in B:
+A>DIR B:                lists it (CAT does the same)
 ```
 
 ## How it boots
@@ -41,11 +55,15 @@ they differ, so sysgen copies it from the BDOS it replaces.
 
 | Address | Contents |
 |---|---|
-| 0100H-D9FFH | TPA, the same 56K as Heath CP/M |
-| DA00H-E1FFH | CCP (still DRI's; HCCP is phase 4) |
-| E200H-EBFFH | HCOS BDOS: code and tables, 3075 of the 3456 bytes that load |
-| EC00H-EF7FH | its variables and its 24-level stack (zeroed on load; function 13 resets them) |
+| 0100H-C2FFH | TPA (48.75K; 56K if there is no HCOS.SYS) |
+| C300H-D8FFH | HCOS.SYS: a JMP to the BDOS (0006H points here), the KFB layer, the HDOS file system, buffers |
+| DA00H-E1FFH | HCCP, 2008 of 2048 bytes (variables and stack included) |
+| E200H-EF7FH | BDOS, 3108 of the 3456 bytes that load, then its variables and 24-level stack |
 | F000H-FFFFH | Heath BIOS |
+
+Warm boot reloads D980H-EF7FH, so HCCP and the BDOS start fresh every
+time. HCOS.SYS isn't reloaded. HCCP finds it by its signature and version,
+resets it, hooks it into the BDOS again and points 0006H at it.
 
 ## What it does
 
@@ -110,12 +128,67 @@ HDOS tests.
   So KAPI and KFB are not separate layers yet. The FCB is the file block
   (as the draft intended for CP/M disks), and there is one file system.
 
-## Next (phase 4)
+## HCCP (phase 4)
 
-The HDOS personality and file system move from HDOS.COM into the kernel.
-They need more room than the BDOS has (381 bytes left). The plan:
+HCCP behaves like the CP/M 2.2 CCP:
 
-- A smaller HCOS command processor (HCCP) in the CCP's 2K, which also runs
-  `.ABS` programs.
-- An extension loaded below DA00H at cold boot. HCCP lowers the TPA top in
-  page zero to protect it.
+- the same entry points (DA00H with a command, DA03H without) and command
+  buffer, so the BIOS's auto-start works;
+- built-ins DIR, ERA, REN, SAVE, TYPE and USER, with CP/M's messages;
+- SUBMIT through $$$.SUB;
+- programs loaded up to DA00H, with "BAD LOAD" past that;
+- DRI's line handling and output.
+
+The CP/M sessions in `tests/cpm/` give identical screens under HCCP and
+DRI's CCP. Details found by reading what the DRI CCP does:
+
+- CR LF before a program runs.
+- A blank line after an error echo ("NAME?").
+- 0004H holds user and drive while a line is typed and a program runs,
+  and the drive alone otherwise.
+
+On top of that:
+
+- **CAT** is DIR.
+- **`NAME`** with no NAME.COM runs NAME.ABS through A:HDOS.COM, with the
+  command line as its arguments.
+- At cold boot HCCP loads **HCOS.SYS**.
+
+## HCOS.SYS and KFB (phase 4)
+
+CP/M programs use HDOS disks through the BDOS:
+
+- **The hook:** the BDOS has a hook vector at E211H (`KXVEC`). Before it
+  selects the drive for an FCB call, it offers the call there. HCCP points
+  it at HCOS.SYS's `kxhook` at every boot.
+- **Which drives:** the call is handled there when the drive is an HDOS
+  disk, detected as HDOS.COM does. Otherwise the BDOS carries on as usual.
+- **The code:** HCOS.SYS is built from HDOS.COM's own file-system modules
+  (`hdosfs`, `hdoswr`, `hdosdir`, `bios`), with a few small routines of its
+  own (`kxlib.asm`) and the KFB layer (`kfb.asm`):
+  - An open file gets a slot laid out like an HDOS.COM channel, so the
+    modules work on it unchanged. The FCB's map holds "K" and the slot
+    number; the record count and the rest keep their CP/M meaning.
+  - Record r is half (r AND 1) of HDOS sector r/2, through a one-sector
+    buffer. Writes read the sector, change the half and write it back,
+    adding sectors past the end.
+  - Make enters the file at once (CP/M's rule, not HDOS's), because
+    programs such as PIP open what they have made.
+  - Searches return one directory entry a file. HDOS's W and S flags
+    become CP/M's R/O and SYS.
+  - It runs on its own stack: the BDOS's is too small for its call depth.
+
+Tests: on an HDOS disk, HCCP's DIR and CP/M PIP's copies in both
+directions, with [V] verify; ERA and REN; and real HDOS listing the files
+the CP/M programs wrote.
+
+### Limits
+
+- **STAT** on an HDOS disk reports CP/M allocation data, which is
+  meaningless there.
+- **Search with "?" in the drive byte** (every entry) still goes to the
+  CP/M side.
+- **HDOS text** is LF-only. CP/M's TYPE shows it stepped, because no
+  conversion is done (open question Q1).
+- **HDOS programs get less memory under HCOS:** HDOS.COM's buffers go below
+  HCOS.SYS.
