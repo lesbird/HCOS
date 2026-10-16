@@ -117,8 +117,9 @@ H89 a Z80, and HDOS itself was 8080-only.
 ----------------------
 Cross assemblers with 8080 mode: zmac (8080 mode), Alfred Arnold's
 "asl" (CPU 8080).
-Emulators: Mark Garlanger's Virtual H89; Douglas Miller's H8/H89
-emulators.
+Emulators: primary test platform is the project author's own accurate
+H89 emulator, https://github.com/lesbird/H89. Also available: Mark
+Garlanger's Virtual H89; Douglas Miller's H8/H89 emulators.
 Community: SEBHC (Society of Eight-Bit Heath Computerists) - HDOS
 manuals, disk images, software archives, and possibly HDOS source
 listings. [VERIFY availability]

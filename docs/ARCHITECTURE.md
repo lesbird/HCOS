@@ -433,7 +433,7 @@ be changed in `HCOS.CFG`.
 
 | Phase | Deliverable | Proves |
 |---|---|---|
-| 0 | Toolchain, emulator setup, test disk images, build script | can build and boot |
+| 0 | Toolchain, emulator setup ([lesbird/H89](https://github.com/lesbird/H89)), test disk images, build script | can build and boot |
 | 1 | **`HDOS.COM`** runs `.ABS` files under stock CP/M (C-mode, SCALL at 0038H, console and file SCALLs mapped to BDOS) | SCALL translation, sys area |
 | 2 | HDOS FS read-only module inside `HDOS.COM` (raw BIOS sector access) | HDOS on-disk format |
 | 3 | HCOS resident kernel: KAPI, KFB, CP/M FS, BDOS personality, H17 driver, boots from disk | replaces CP/M |
