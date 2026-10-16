@@ -1,0 +1,10 @@
+# ASM and LOAD: write a program with ED, assemble, load, run.
+@put ASM.COM
+A>|ED HELLO.ASM\r
+*|I\r
+|\tORG\t100H\r\tMVI\tC,9\r\tLXI\tD,MSG\r\tCALL\t5\r\tJMP\t0\rMSG:\tDB\t'HELLO FROM ASM$'\r\tEND\r\032
+*|E\r
+A>|ASM HELLO\r
+A>|LOAD HELLO\r
+A>|HELLO\r
+A>|DIR HELLO.*\r

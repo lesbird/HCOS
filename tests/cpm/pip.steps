@@ -1,0 +1,13 @@
+# PIP: copy, copy with verify, concatenate, interactive mode, type.
+A>|PIP X.TXT=ERRORMSG.SYS\r
+A>|PIP Y.TXT=X.TXT[V]\r
+A>|PIP Z.TXT=X.TXT,Y.TXT\r
+A>|STAT *.TXT\r
+A>|PIP\r
+*|D.TXT=Z.TXT\r
+*|E.TXT=D.TXT[V]\r
+*|\r
+A>|STAT *.TXT\r
+A>|PIP LST:=D.TXT\r
+A>|ERA X.TXT\r
+A>|DIR *.TXT\r

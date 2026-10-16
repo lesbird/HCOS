@@ -1,8 +1,9 @@
 # HDOS.COM
 
 HDOS.COM is a CP/M 2.2 program that runs HDOS 2.0 `.ABS` programs. They can
-use files on CP/M disks and read real HDOS disks in the same machine. It is
-phases 1, 1b and 2 of HCOS. It proves the SCALL translation, the emulated
+use files on CP/M disks and read and write real HDOS disks in the same
+machine. It is
+phases 1, 1b, 2 and 2b of HCOS. It proves the SCALL translation, the emulated
 HDOS system area and the HDOS file system before they move into the HCOS
 kernel.
 
@@ -23,7 +24,7 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
 | Program | Status |
 |---|---|
 | BASIC.ABS (Benton Harbor BASIC #110.06.00) | Runs. RUN, SAVE, OLD, LIST, error messages and BYE all work. Covered by `make test`. |
-| PIP.ABS | Copies files: CP/M to CP/M, and HDOS disk to CP/M disk. `/L` lists CP/M disks and HDOS disks, with sizes, dates, flags and free space. Covered by `make test`. |
+| PIP.ABS | Copies files between CP/M disks and HDOS disks, either way. `/L` lists CP/M disks and HDOS disks, with sizes, dates, flags and free space. Covered by `make test`. |
 | EDIT.ABS, PATCH.ABS, FLAGS.ABS | Start and take commands. Keystrokes so far behave the same as on real HDOS. |
 | ONECOPY.ABS | Runs as far as asking for disks to be swapped. A single-drive copier doesn't fit under CP/M, which needs its system disk in A:. |
 | SET.ABS | Exits with "Illegal Device Specification". It configures HDOS device drivers, which don't exist under CP/M. |
@@ -38,8 +39,8 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
 | 1992H-1FFFH | More code (the made-up directory), then small buffers and HDOS.COM's stack |
 | 2000H-227FH | Emulated HDOS system area: monitor RAM cells, RST vector slots, S.VAL, S.INT. Command-line arguments sit just below 2280H. |
 | 2280H-  | The HDOS program, as loaded from its header |
-| BDOS−2.5K | HDOS.COM's high buffers: a GRT page for each of units 0-3, the scratch area (S.SCR), a directory block buffer, the type-ahead and the channel table |
-| BDOS-   | CP/M. S.SYSM is set to the start of the high buffers, so programs can use everything below them, including the CCP. On a 64K machine that is D800H, about 5.5K less than real HDOS 2.0 (EDB1H). |
+| BDOS−2.75K | HDOS.COM's high buffers: a GRT page for each of units 0-3, the scratch area (S.SCR), a directory block buffer, the type-ahead, the channel table and the command tail |
+| BDOS-   | CP/M. S.SYSM is set to the start of the high buffers, so programs can use everything below them, including the CCP. On a 64K machine that is D500H, about 6K less than real HDOS 2.0 (EDB1H). |
 
 ## How it works
 
@@ -88,8 +89,18 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
     BIOS sectors 2(n mod 10)+1 and +2.
   - Files are found in the disk's own directory and read by following
     their GRT chains. DIRECT.SYS and GRT.SYS are ordinary files there.
-  - HDOS disks are **read only** for now. Opening for write or update,
-    `.DELET` and `.RENAM` return EC.WP ("Disk is Write Protected").
+  - Writing follows HDOS (`hdoswr.asm`, `hdosdir.asm`):
+    - Groups come off the free chain at GRT[0].
+    - `.OPENW` takes the first group at once and enters the file at
+      `.CLOSE`, replacing an old file of that name.
+    - `.CLEAR` gives a new file's groups back.
+    - `.OPENU` writes over sectors in place and adds them at the end.
+    - The GRT and the changed directory block are written back at each
+      close, delete and rename.
+    - Write-protected files give EC.WPV. `.OPENC` doesn't make the file
+      contiguous.
+  - Sector writes go through the BIOS. The second half of each sector is
+    written as a "directory" write so the BIOS writes it at once.
 - **Made-up directory for CP/M disks** (`syndir.asm`):
   - Opening DIRECT.SYS on a CP/M disk gives HDOS directory blocks built
     from the CP/M directory: 22 entries a block, names zero-padded.
@@ -114,7 +125,6 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
   The overlay table says both overlays are resident.
 - `.CHFLG`, `.DISMT` and `.LOADD` report themselves on the console and
   return EC.ILR.
-- **Writing to HDOS disks.**
 - **Calls into resident HDOS through S.JUMPS** other than S.GUP. HDOS.COM
   names the entry point and exits.
 - **HDOS 2.0 PIP quirks, matched on purpose:** it can't copy a file that
@@ -136,5 +146,11 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
 
 `tests/difftest.sh` runs each program in `tests/hdos/` on real HDOS 2.0 and
 under HDOS.COM on CP/M, and compares the output between `{{` and `}}`.
-`tests/run.sh` includes a scripted HDOS BASIC session. Both run with
-`make test`.
+A test marked `ALSO: hdos` (the file test) also runs under HDOS.COM with
+its files on an HDOS disk, and must match real HDOS too. `tests/run.sh` has
+scripted sessions: HDOS BASIC; PIP listing CP/M and HDOS disks; copying in
+both directions; and real HDOS booting a disk HDOS.COM wrote to and running
+the program copied onto it. Both run with `make test`.
+
+HDOS.COM is now full: its code ends 18 bytes short of 2000H. Further work
+goes into the HCOS kernel (phase 3 on).

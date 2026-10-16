@@ -294,20 +294,7 @@ hlook:	lxi	h,0FFFFh
 hl.blk:	mov	a,h
 	ora	l
 	jz	hl.nf
-	shld	hlblk
-	lhld	psec			; read the 512-byte block
-	xchg
-	lhld	hlblk
-	lda	dunit
-	call	rdsec
-	rc
-	lhld	psec
-	inr	h
-	xchg
-	lhld	hlblk
-	inx	h
-	lda	dunit
-	call	rdsec
+	call	rdblk
 	rc
 	lhld	psec
 	mvi	b,DIRENT
@@ -343,6 +330,22 @@ hl.next: lhld	psec
 hl.nf:	mvi	a,EC.FNF
 	stc
 	ret
+
+; rdblk - read directory block HL of unit dunit into psec.
+rdblk:	shld	hlblk
+	lhld	psec
+	xchg
+	lhld	hlblk
+	lda	dunit
+	call	rdsec
+	rc
+	lhld	psec
+	inr	h
+	xchg
+	lhld	hlblk
+	inx	h
+	lda	dunit
+	jmp	rdsec
 
 ; hopen - open dnam's file on HDOS unit dunit for reading on channel
 ; chp.

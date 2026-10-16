@@ -3,8 +3,9 @@
 **HCOS** (HDOS CP/M Operating System): an operating system for the Heathkit H8 and H89 that runs both
 **HDOS** (`.ABS`) and **CP/M 2.2** (`.COM`) programs, written in 8080 assembly.
 
-- Status: **Draft 0.3**, 2026-10-16. Phases 1, 1b and 2 (HDOS.COM) are
-  done; see [HDOSCOM.md](HDOSCOM.md).
+- Status: **Draft 0.4**, 2026-10-16. Phases 1, 1b, 2 and 2b (HDOS.COM) and 3
+  (the kernel's BDOS, booting from disk) are done; see
+  [HDOSCOM.md](HDOSCOM.md) and [KERNEL.md](KERNEL.md).
 - Background: [research-notes.txt](research-notes.txt)
 
 > Facts marked **[VERIFY]** are from memory and must be checked against
@@ -473,8 +474,8 @@ be changed in `HCOS.CFG`.
 | 1 | **Done.** **`HDOS.COM`** runs `.ABS` files under stock CP/M (C-mode, SCALL at 0038H, console and file SCALLs mapped to BDOS). HDOS BASIC runs. See [HDOSCOM.md](HDOSCOM.md) | SCALL translation, sys area |
 | 1b | **Done.** `.LOADO`, device/unit tables and S.GUP, a made-up DIRECT.SYS and GRT for CP/M disks: PIP lists CP/M disks | more of Heath's utilities |
 | 2 | **Done.** HDOS FS read-only module inside `HDOS.COM` (raw BIOS sector access): run, copy and list from real HDOS disks | HDOS on-disk format |
-| 2b | Writing HDOS disks (GRT allocation, directory update) | full HDOS FS |
-| 3 | HCOS resident kernel: KAPI, KFB, CP/M FS, BDOS personality, H17 driver, boots from disk | replaces CP/M |
+| 2b | **Done.** Writing HDOS disks (GRT allocation, directory update) | full HDOS FS |
+| 3 | **Done** (see [KERNEL.md](KERNEL.md)). HCOS boots from disk on its own CP/M 2.2 BDOS, installed in the system tracks; drivers are the Heath BIOS. CP/M's own tools and all HDOS.COM tests pass on it | replaces CP/M |
 | 4 | SCALL personality moved into the kernel; HDOS FS read/write; HCCP | dual personality |
 | 5 | H-mode (ROM swap) + `ROMPROG` list | ROM-dependent programs |
 | 6 | H37 driver, HDOS 3.0 SCALLs, `.LOADO` overlays | broader compatibility |

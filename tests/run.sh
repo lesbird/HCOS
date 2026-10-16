@@ -5,16 +5,19 @@
 . "$(dirname "$0")/h89env.sh"
 
 DISKS=$HCOS_DIR/build/disks
-WORK=$HCOS_DIR/build/test
+WORK=$HCOS_DIR/build/test$SUFFIX
 mkdir -p "$WORK"
 pass=0 fail=0
 
 # run_test name os expect file... -- step...
 #   os is cpm or hdos, the disk booted in SY0:/A:; cpm+hdos also puts
-#   a copy of the HDOS disk in SY1:/B:. Files are copied onto the boot
-#   disk; the steps are typed after the OS prompt appears.
+#   a copy of the HDOS disk in SY1:/B: (left in build/test/NAME-1.h8d).
+#   hdos=PATH boots HDOS from a copy of the disk image PATH. Files are
+#   copied onto the boot disk; the steps are typed after the OS prompt
+#   appears.
 run_test() {
     name=$1 os=${2%%+*} expect=$3
+    [ "$os" = cpm ] && os=$CPMDISK
     disk1=
     if [ "$2" != "$os" ]; then
         disk1=$WORK/$name-1.h8d
@@ -22,7 +25,10 @@ run_test() {
     fi
     shift 3
     disk=$WORK/$name.h8d
-    cp "$DISKS/$os.h8d" "$disk"
+    case $os in
+    hdos=*) cp "${os#hdos=}" "$disk"; os=hdos ;;
+    *) cp "$DISKS/$os.h8d" "$disk" ;;
+    esac
     while [ "$1" != "--" ]; do
         "$H8DTOOL" put "$disk" "$1" >/dev/null || { fail=$((fail + 1)); return; }
         shift
@@ -39,7 +45,7 @@ run_test() {
         echo "PASS $name"
         pass=$((pass + 1))
     else
-        echo "FAIL $name (screen in build/test/$name.screen)"
+        echo "FAIL $name (screen in build/test$SUFFIX/$name.screen)"
         fail=$((fail + 1))
     fi
 }
@@ -75,6 +81,12 @@ run_test pip-copy-hdos cpm+hdos 'Extended Benton Harbor BASIC' \
     "$B/hdos.com" "$P/PIP.ABS" -- \
     --step 'A>|HDOS PIP\r' --step ':P:|SY0:BASIC.ABS=SY1:BASIC.ABS\r' \
     --step "1 Files Copied|$(printf '\004')" --step 'A>|HDOS BASIC\r'
+# Write an HDOS disk under CP/M, then check real HDOS can use the file.
+run_test pip-to-hdos cpm+hdos '1 Files Copied' \
+    "$B/hdos.com" "$P/PIP.ABS" -- \
+    --step 'A>|HDOS PIP\r' --step ':P:|SY1:PIP2.ABS=SY0:PIP.ABS\r'
+run_test hdos-reads-it "hdos=$WORK/pip-to-hdos-1.h8d" ':P:' -- \
+    --step '>|CAT PIP2.ABS\r' --step '>|PIP2\r'
 run_test run-from-hdos cpm+hdos 'BASIC FROM SY1:' \
     "$B/hdos.com" -- \
     --step 'A>|HDOS SY1:BASIC\r' --step '\n*|PRINT "BASIC FROM SY1:"\r'

@@ -1,4 +1,4 @@
-; bios.asm - raw H17 sector reads through the CP/M BIOS
+; bios.asm - raw H17 sector reads and writes through the CP/M BIOS
 ;
 ; The Heath CP/M BIOS reads any H17 disk a sector at a time when it is
 ; called directly: BIOS track = physical track, BIOS sectors 1-20 are
@@ -14,10 +14,19 @@ B.SETTRK equ	30
 B.SETSEC equ	33
 B.SETDMA equ	36
 B.READ	equ	39
+B.WRITE	equ	42
 
 ; rdsec - read HDOS sector HL of drive A (0 = A:) into the 256 bytes
 ; at DE. CY and A = EC.RF on error. Uses all.
-rdsec:	sta	rsdrv
+; wrsec - write the 256 bytes at DE to it. CY and A = EC.WF on error.
+rdsec:	push	psw
+	xra	a
+	jmp	rs0
+wrsec:	push	psw
+	mvi	a,1
+rs0:	sta	rswr
+	pop	psw
+	sta	rsdrv
 	xchg
 	shld	rsdma
 	xchg
@@ -57,7 +66,12 @@ rdsec:	sta	rsdrv
 	xra	a
 	ret
 rs.err:	call	bdsel
+	lda	rswr
+	ora	a
 	mvi	a,EC.RF
+	stc
+	rz
+	mvi	a,EC.WF
 	stc
 	ret
 
@@ -72,8 +86,16 @@ rshalf:	lda	rssec
 	mov	c,l
 	mvi	a,B.SETDMA
 	call	bcall
+	lda	rswr
+	ora	a
 	mvi	a,B.READ
-	call	bcall
+	jz	rsh1
+	lda	rssec			; write: the second half as a
+	cma				; "directory" write (type 1), so
+	ani	1			; the BIOS writes the sector now
+	mov	c,a
+	mvi	a,B.WRITE
+rsh1:	call	bcall
 	ora	a
 	rz
 	stc
@@ -105,3 +127,4 @@ rsdrv:	db	0
 rsdma:	dw	0
 rstrk:	dw	0
 rssec:	db	0
+rswr:	db	0			; 0 read, 1 write

@@ -1,5 +1,6 @@
 ; files.asm - file SCALLs: open, read, write, EOF, position, name,
 ; rename, clear, delete, decode, errors, .ERROR.
+; ALSO: hdos
 
 	include	test.inc
 
@@ -44,7 +45,66 @@ fill:	mov	m,b
 	SHOW	' CL'
 	call	PNL
 
-	; Read it back: 1 sector, then ask for 4 (only 2 left).
+	; Update: write over sector 1 and add a sector 3 at the end, then
+	; read all 4 back: 00 77 02 77.
+	mvi	a,1
+	lxi	h,nf
+	lxi	d,defdat
+	SCALL	.OPENU
+	SHOW	'OU'
+	lxi	h,BUF+300h		; a sector of 77H
+	mvi	b,0
+fill77:	mvi	m,77h
+	inx	h
+	dcr	b
+	jnz	fill77
+	mvi	a,1
+	lxi	b,1
+	SCALL	.POSIT
+	mvi	a,1
+	lxi	b,256
+	lxi	d,BUF+300h
+	SCALL	.WRITE
+	SHOW	' W1'
+	mvi	a,1
+	lxi	b,3
+	SCALL	.POSIT
+	SHOW	' P3'
+	mvi	a,1
+	lxi	b,256
+	lxi	d,BUF+300h
+	SCALL	.WRITE
+	SHOW	' W3'
+	mvi	a,1
+	SCALL	.CLOSE
+	SHOW	' CL'
+	mvi	a,1
+	lxi	h,nf
+	lxi	d,defdat
+	SCALL	.OPENR
+	mvi	a,1
+	lxi	b,5*256
+	lxi	d,BUF
+	SCALL	.READ
+	SHOW	' RD5'
+	call	PSTR
+	db	' B=',0
+	mov	a,b
+	call	PHEX
+	lxi	h,BUF
+	mvi	b,4
+upd1:	mvi	a,' '
+	SCALL	.SCOUT
+	mov	a,m
+	call	PHEX
+	inr	h
+	dcr	b
+	jnz	upd1
+	mvi	a,1
+	SCALL	.CLOSE
+	call	PNL
+
+	; Read it back: 1 sector, then ask for 4 (only 3 left).
 	mvi	a,1
 	lxi	h,nfx			; no extension: default DAT
 	lxi	d,defdat
@@ -89,10 +149,10 @@ fill:	mov	m,b
 	lxi	h,BUF+8
 	SCALL	.NAME
 	SHOW	'NAME'
-	mvi	a,' '
-	SCALL	.SCOUT
-	lxi	h,BUF
-	mvi	b,17
+	mvi	a,' '			; (not the device: it depends on
+	SCALL	.SCOUT			; the drive the test runs on)
+	lxi	h,BUF+3
+	mvi	b,14
 	call	pstrn
 	call	PNL
 

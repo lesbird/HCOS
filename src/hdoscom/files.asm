@@ -31,6 +31,8 @@ CM.TT	equ	4		; console
 CM.LP	equ	5		; printer
 CM.HRD	equ	6		; HDOS disk file, read (hdosfs.asm)
 CM.SYN	equ	7		; made-up DIRECT.SYS of a CP/M disk
+CM.HWR	equ	8		; HDOS disk file, write (hdoswr.asm)
+CM.HUP	equ	9		; HDOS disk file, update
 
 DK.DISK	equ	0		; device kinds from dkind
 DK.TT	equ	1
@@ -338,7 +340,9 @@ mf2:	stax	d
 
 ; parsenm - HL = name, BC = default block, DE = FCB to fill: decode a
 ; disk file name. Exit HL past the name; CY and A = EC.* on error.
-parsenm: push	d
+parsenm: mvi	a,0FFh
+	sta	dkres
+	push	d
 	call	decode
 	pop	d
 	rc
@@ -348,6 +352,7 @@ parsenm: push	d
 	pop	d
 	pop	h
 	rc
+	sta	dkres
 	ora	a
 	jz	pn1
 	cpi	DK.HDOS
@@ -501,13 +506,23 @@ sopx:	push	psw
 	lhld	chname
 	ret
 
-; HDOS disk: read only.
-sophd:	lda	chnew
+; HDOS disk: read, or update.
+sophd:	call	hopen
+	jc	sopx
+	lda	chnew
 	cpi	CM.RD
-	mvi	a,EC.WP
-	stc
-	jnz	sopx
-	call	hopen
+	jz	sopx
+	call	hlook			; update: not if write protected
+	call	hwpchk
+	jc	sopwp
+	mvi	a,CM.HUP
+	call	setmode
+	ora	a
+	jmp	sopx
+sopwp:	push	psw
+	mvi	a,CM.CLS
+	call	setmode
+	pop	psw
 	jmp	sopx
 
 ; TT: or LP:
@@ -540,11 +555,10 @@ sopw0:	sta	chnoex
 	call	chopen
 	jc	sopx
 	cpi	DK.HDOS
-	mvi	a,EC.WP			; HDOS disks are read only
-	stc
-	jz	sopx
-	lda	chkind
-	cpi	DK.DISK
+	jnz	sopw2
+	call	hcreate
+	jmp	sopx
+sopw2:	cpi	DK.DISK
 	jnz	sopdev
 	lda	chnoex
 	ora	a
@@ -603,7 +617,13 @@ sclose:	call	chptr
 ; chcls - close channel chp (open), finishing any write.
 chcls:	lhld	chp
 	mov	a,m
+	cpi	CM.HWR			; HDOS write or update
+	jc	chc0
+	call	hclose
+	lhld	chp
 	mvi	m,CM.CLS
+	ret
+chc0:	mvi	m,CM.CLS
 	cpi	CM.TT
 	rnc				; devices: nothing to do
 	push	psw
@@ -655,7 +675,11 @@ sclear:	call	chptr
 ; chclr - clear channel chp.
 chclr:	lhld	chp
 	mov	a,m
-	cpi	CM.WR
+	cpi	CM.HWR			; HDOS write: give the groups back
+	jnz	chclr1
+	mvi	m,CM.CLS
+	jmp	hclear
+chclr1:	cpi	CM.WR
 	jnz	chcls1
 	mvi	m,CM.CLS		; delete NAME.$$$
 	call	chfcb
@@ -698,11 +722,15 @@ sread:	call	rwchk
 	jz	rw.ilr
 	cpi	CM.LP
 	jz	rw.ilr
+	cpi	CM.HWR
+	jz	rw.ilr
 
 ; chrd - read B sectors into DE from open channel chp (not TT:).
 chrd:	lhld	chp
 	mov	a,m
 	cpi	CM.HRD
+	jz	hread
+	cpi	CM.HUP
 	jz	hread
 	cpi	CM.SYN
 	jz	synrd
@@ -717,7 +745,9 @@ swrite:	call	rwchk
 	jz	lpwrit
 	cpi	CM.RD
 	jz	rw.ilr
-	cpi	CM.HRD			; HDOS file, made-up directory
+	cpi	CM.HWR			; HDOS write, update
+	jnc	hwrite
+	cpi	CM.HRD			; HDOS read, made-up directory
 	jnc	rw.ilr
 	mvi	a,F_WRITERAND
 
@@ -870,10 +900,10 @@ ttr1:	push	b
 ; the end).
 sposit:	call	rwchk
 	rc
-	cpi	CM.HRD
-	jz	hposit
 	cpi	CM.SYN
 	jz	synpos
+	cpi	CM.HRD
+	jnc	hposit			; HDOS read, write, update
 	cpi	CM.TT
 	mvi	a,EC.DNS
 	cmc
@@ -934,8 +964,13 @@ sp1:	mov	a,c			; record = sector * 2
 
 ; ---- .DELET: HL = name, DE = default block ----
 sdelet:	call	nmtmp
-	rc
-	lxi	d,tmpfcb
+	jnc	sdel1
+	lda	dkres			; on an HDOS disk?
+	cpi	DK.HDOS
+	jz	hdelete
+	stc
+	ret
+sdel1:	lxi	d,tmpfcb
 	mvi	c,F_DELETE
 	call	BDOS
 	inr	a
@@ -956,8 +991,13 @@ nmtmp:	mov	b,d
 srenam:	push	b
 	call	nmtmp
 	pop	h
-	rc
-	lxi	b,zdef			; new name: no defaults, and any
+	jnc	sren1
+	lda	dkres			; on an HDOS disk?
+	cpi	DK.HDOS
+	jz	hrename
+	stc
+	ret
+sren1:	lxi	b,zdef			; new name: no defaults, and any
 	lxi	d,tmpfcb+16		; device in it is ignored
 	call	decode
 	rc
@@ -1320,6 +1360,7 @@ chkind:	db	0
 chnew:	db	0			; mode being opened
 chnoex:	db	0			; .OPENC: must not exist
 chnum:	db	0			; channel being opened
+dkres:	db	0			; kind of disk parsenm found
 chbc:	dw	0			; caller's BC (B, C)
 rwfn:	db	0
 errc:	db	0

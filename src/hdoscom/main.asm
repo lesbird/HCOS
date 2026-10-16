@@ -24,18 +24,22 @@ start:	lxi	sp,hcstk
 	lxi	d,HI.CHT
 	call	hiptr
 	shld	pchtab
+	lxi	d,HI.CMD
+	call	hiptr
+	shld	pcmd
 	call	cinit			; console state
 	call	finit			; channel table
 	call	uinit			; units: format not known yet
 
 	; Copy the command tail out of TBUF, which disk reads reuse.
+	lhld	pcmd
+	xchg
 	lxi	h,TBUF
-	lxi	d,cmdbuf
 	mvi	b,128
 	call	move
 	; First word of the command tail is the program name, the rest
 	; (with its leading blank) is passed to the program.
-	lxi	h,cmdbuf
+	lhld	pcmd
 	mov	c,m			; length
 	inx	h
 	mvi	b,0
@@ -125,6 +129,7 @@ psec:	dw	0			; -> sector buffer
 pgrt:	dw	0			; -> GRT of unit 0 (then 1, 2, 3)
 pkbuf:	dw	0			; -> type-ahead
 pchtab:	dw	0			; -> channel table
+pcmd:	dw	0			; -> copy of the command tail
 pname:	dw	0			; program name in the command tail
 pnend:	dw	0			; end of the name
 pnchr:	db	0			; char that was at the end of the name

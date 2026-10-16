@@ -9,6 +9,12 @@ H89RUN=$H89_DIR/build/h89run
 H8DTOOL=$H89_DIR/build/h8dtool
 H89_DISKS=$H89_DIR/disks
 
+# The CP/M disk the tests boot: cpm (Heath CP/M) or hcos (the same disk
+# with the HCOS BDOS in its system tracks).
+CPMDISK=${CPMDISK:-cpm}
+SUFFIX=${CPMDISK#cpm}
+SUFFIX=${SUFFIX:+-$SUFFIX}
+
 for t in "$H89RUN" "$H8DTOOL"; do
     if [ ! -x "$t" ]; then
         echo "missing $t: build the H89 emulator or set H89_DIR" >&2

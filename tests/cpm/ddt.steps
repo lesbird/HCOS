@@ -1,0 +1,9 @@
+# DDT: load a program, dump, assemble, run, save.
+A>|DDT DUP.COM\r
+-|D100,13F\r
+-|A200\r
+|MVI C,9\rLXI D,210\rCALL 5\rJMP 0\r\r
+-|S210\r
+|48\r49\r24\r.\r
+-|G200\r
+A>|DIR\r

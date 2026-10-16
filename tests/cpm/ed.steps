@@ -1,0 +1,14 @@
+# ED: make a file, edit it, list it.
+A>|ED NOTE.TXT\r
+*|I\r
+|FIRST LINE\rSECOND LINE\rTHIRD LINE\r\032
+*|B#T\r
+*|E\r
+A>|TYPE NOTE.TXT\r
+A>|ED NOTE.TXT\r
+*|#A\r
+*|B2K\r
+*|B#T\r
+*|E\r
+A>|TYPE NOTE.TXT\r
+A>|DIR NOTE.*\r
