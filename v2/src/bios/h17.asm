@@ -1,8 +1,14 @@
 ; h17.asm - the H17 driver, part of bios.asm
 ;
-; h17rd / h17wr: read or write host sector hstsec (0-9, before skew) of
-; track hsttrk on drive hstdsk (0-2), to or from hstbuf. h17rdp reads
-; physical sector physec instead. NC on success.
+; The driver's entries (the same for every driver, so that it can be the
+; BIOS's own or sit in the slot: see biosram.inc):
+;   h17rd / h17wr  read or write host sector hstsec (0-9, before skew) of
+;                  track hsttrk on unit hunit (0-2), to or from hstbuf
+;   h17op          A = 0 (read) or 1 (write): physical sector physec
+;   h17rdy         A = unit: NC if it is ready
+;   h17tck         every 512 ms, from the clock interrupt
+;   h17ini         at cold boot
+; NC on success.
 ; CY and A = error code on failure, after the retries:
 ;   01H wrong track   02H no header sync   04H header checksum
 ;   08H data checksum 10H sector not found 20H no data sync
@@ -36,12 +42,12 @@ T.OFF	equ	15		; motor off after 15 x 512 ms (about 8 s)
 RETRIES	equ	10
 
 h17rd:	call	toskew
-h17rdp:	xra	a
+	xra	a
 	jmp	h17op
 h17wr:	call	toskew
 	mvi	a,1
 h17op:	sta	h17w
-	lda	hstdsk
+	lda	hunit
 	call	select
 	mvi	a,RETRIES
 	sta	retry
@@ -97,6 +103,36 @@ rdy2:	cmc
 	mvi	a,T.OFF
 	sta	mtim
 	pop	psw
+	ret
+
+; Every 512 ms: the motor-off timer. Uses A, HL.
+h17tck:	lxi	h,mtim
+	mov	a,m
+	ora	a
+	rz			; stopped
+	dcr	m
+	rnz
+	lda	s7f		; time: motor off, no drive selected
+	ani	0e1h
+	sta	s7f
+	out	DP.CTL
+	ret
+
+; Cold boot: nothing selected, every track unknown. The motor is left
+; running, as the ROM's boot leaves it, so the first access doesn't
+; wait for it to start again; the timer stops it later.
+h17ini:	mvi	a,DF.MO
+	sta	s7f
+	out	DP.CTL
+	mvi	a,T.OFF
+	sta	mtim
+	mvi	a,0ffh
+	lxi	h,h17trk
+	mov	m,a
+	inx	h
+	mov	m,a
+	inx	h
+	mov	m,a
 	ret
 
 ; Select drive A and start the motor, waiting as long as they need.
@@ -184,7 +220,7 @@ step:	push	h
 	ret
 
 ; HL = this drive's entry in h17trk.
-trkptr:	lda	hstdsk
+trkptr:	lda	hunit
 	mov	l,a
 	mvi	h,0
 	lxi	d,h17trk
@@ -373,29 +409,6 @@ ws7:	mvi	a,20
 ws8:	dcr	a
 	jnz	ws8
 	ora	a		; NC
-	ret
-
-; Tick deadlines. tdead: the deadline is HL ticks from now. tpast: CY
-; while it hasn't come. Interrupts must be on.
-tdead:	xchg
-	lhld	tickc
-	dad	d
-	shld	tdl
-	ret
-tpast:	lhld	tdl
-	xchg
-	lhld	tickc
-	mov	a,l
-	sub	e
-	mov	a,h
-	sbb	d
-	ral			; CY = the sign: now < deadline
-	ret
-
-; Wait HL ticks.
-twait:	call	tdead
-tw1:	call	tpast
-	jc	tw1
 	ret
 
 ; physec := the physical sector of host sector hstsec: 4 sectors apart,

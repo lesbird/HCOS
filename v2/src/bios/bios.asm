@@ -12,7 +12,121 @@
 ; (docs/research/boot.md, h17.md); no Heath or DRI code.
 
 	.8080
-	include	layout.inc
+	include	biosram.inc
+
+	org	BIOSCB
+
+; ---- Cold boot ----
+; It runs once, so it lives in the last page below the BIOS, which the
+; BDOS doesn't use (layout.inc), and the BIOS proper keeps its room.
+
+boot:	lxi	sp,stack
+	lhld	TICCNT		; the ROM has counted since reset
+	shld	tickc
+	mvi	a,GP.ORG+GP.CLI	; RAM in at 0000H, clock on
+	sta	gppv
+	out	GPP
+	if	SLOTS
+	call	slinit
+	endif
+	call	page0
+	call	coninit
+	call	dinit
+	lxi	h,SYSTAB	; the sums, before a program can touch them
+	lxi	d,wbtab
+	mvi	b,8
+	call	cpyn
+	ei
+	lxi	h,signon
+	call	print
+	mvi	a,0a9h		; IOBYTE, as Heath's (the BIOS ignores it)
+	sta	0003h
+	xra	a
+	sta	0004h		; drive A:, user 0
+	if	SLOTS
+	in	GPP		; SW501: the other controller there? (H37
+	if	CORE37		; at 170Q, H17 at 174Q.) Then the shell
+	ani	03h		; runs A:H17 or A:H37 first, which loads
+	else			; its driver into the slot.
+	ani	0ch
+	endif
+	jnz	gocpm
+	lxi	h,h37cmd
+	lxi	d,SHELLB+7	; the shell's command buffer
+	mvi	b,H37CL
+	call	cpyn
+	call	setbd
+	mvi	c,0
+	jmp	SHELLB
+	endif
+	jmp	gocpm
+
+; Disks: the buffer empty, and the driver's own start.
+dinit:	xra	a
+	sta	hstact
+	sta	hstwrt
+	sta	unacnt
+	sta	rlcnt
+	jmp	cini
+
+; Console: 9600 baud (19200 with SW501 bit 6), 8N1, and the type-ahead.
+coninit:
+	mvi	a,83h		; divisor latch
+	out	CON.LCR
+	in	GPP		; SW501 bit 6: 19200 baud, else 9600
+	ani	SW.BAU
+	mvi	a,12		; 1.8432 MHz / 16 / 9600
+	jz	ci1
+	mvi	a,6
+ci1:	out	CON
+	xra	a
+	out	CON+1
+	mvi	a,03h		; 8 bits, no parity, 1 stop
+	out	CON.LCR
+	mvi	a,0fh		; DTR, RTS, OUT1, OUT2
+	out	CON.MCR
+	mvi	a,rbuf and 0ffh
+	sta	rin
+	sta	rout
+	in	CON		; drop anything already there
+	mvi	a,01h		; interrupt on received data
+	out	CON.IER
+	ret
+
+	if	SLOTS
+; The slot's entries until a driver is there: not ready, and nothing
+; for the clock or RST 4.
+slinit:	lxi	h,SLOTB
+	lxi	d,slnull
+	mvi	b,SLOTN
+sli1:	mvi	m,0c3h
+	inx	h
+	ldax	d
+	mov	m,a
+	inx	h
+	inx	d
+	ldax	d
+	mov	m,a
+	inx	h
+	inx	d
+	dcr	b
+	jnz	sli1
+	ret
+slnull:	dw	slnr,slnr,slnr,slnr,slret,sleir,slret
+slnr:	mvi	a,80h
+	stc
+slret:	ret
+sleir:	ei
+	ret
+	if	CORE37
+h37cmd:	db	H37CL-2,'A:H17',0
+	else
+h37cmd:	db	H37CL-2,'A:H37',0
+	endif
+H37CL	equ	$-h37cmd
+	endif
+	assert	$ <= BIOSB
+	ds	BIOSB-$
 
 	org	BIOSB
 
@@ -36,33 +150,17 @@
 	jmp	ticks
 	jmp	conint
 	jmp	tickr
-	assert	$ == B.TICKR+3
+	jmp	phys
+	assert	$ == B.PHYS+3
+	if	SLOTS
+	jmp	tdead
+	jmp	tpast
+	jmp	twait
+	assert	$ == B.TWAIT+3
+	endif
 
-; ---- Cold and warm boot ----
-
-boot:	lxi	sp,stack
-	lhld	TICCNT		; the ROM has counted since reset
-	shld	tickc
-	mvi	a,GP.ORG+GP.CLI	; RAM in at 0000H, clock on
-	sta	gppv
-	out	GPP
-	call	page0
-	call	coninit
-	call	dinit
-	lxi	h,SYSTAB	; the sums, before a program can touch them
-	lxi	d,wbtab
-	mvi	b,8
-	call	cpyn
-	ei
-	lxi	h,signon
-	call	print
-	mvi	a,0a9h		; IOBYTE, as Heath's (the BIOS ignores it)
-	sta	0003h
-	xra	a
-	sta	0004h		; drive A:, user 0
-	jmp	gocpm
-
-; Warm boot: reload the shell and the BDOS if their code has changed.
+; ---- Warm boot ----
+; Reload the shell and the BDOS if their code has changed.
 wboot:	lxi	sp,stack
 	di
 	call	page0
@@ -78,13 +176,17 @@ wboot:	lxi	sp,stack
 	lxi	h,wbtab+4	; the BDOS: sectors 9-22
 	lxi	b,BDSUMB
 	call	chksys
-gocpm:	mvi	a,0c3h		; 0005H: JMP to the BDOS
-	sta	0005h
-	lxi	h,BDOSB+6
-	shld	0006h
+gocpm:	call	setbd
 	lda	0004h
 	mov	c,a
 	jmp	SHELLB+3
+
+; 0005H: JMP to the BDOS.
+setbd:	mvi	a,0c3h
+	sta	0005h
+	lxi	h,BDOSB+6
+	shld	0006h
+	ret
 
 ; HL -> the length and sum of the code from BC. Reload the part it is
 ; in from drive A if the sum isn't right any more.
@@ -122,7 +224,7 @@ cks2:	pop	d		; DE = address
 reload:	lxi	h,rlcnt		; (counted, for the tests)
 	inr	m
 	xra	a
-	sta	hstdsk
+	sta	hunit
 	mov	a,d		; sector = (DE - D900H) / 256
 	sui	SYSB shr 8
 	sta	rlsec
@@ -135,20 +237,15 @@ rl3:	adi	10
 	sta	physec
 	mov	a,b
 	sta	hsttrk
-	call	h17rdp
+	xra	a		; read physec
+	call	cop
 	jc	rlerr
 	lda	rlsec		; to its place
 	adi	SYSB shr 8
 	mov	d,a
 	mvi	e,0
 	lxi	h,hstbuf
-	mvi	b,0
-rl4:	mov	a,m
-	stax	d
-	inx	h
-	inx	d
-	dcr	b
-	jnz	rl4
+	call	cp256
 	lxi	h,rlsec
 	inr	m
 	mov	a,m
@@ -196,32 +293,23 @@ p0rst:	mvi	m,0fbh
 	mov	m,e
 	inx	h
 	mov	m,d
+	if	SLOTS
+	mvi	l,20h		; RST 4: the H37's INTRQ, to its driver
+	mvi	m,0c3h
+	inx	h
+	if	CORE37
+	lxi	d,dkisr
+	else
+	lxi	d,SL.ISR
+	endif
+	mov	m,e
+	inx	h
+	mov	m,d
+	endif
 	mvi	l,66h		; NMI
 	mvi	m,0edh		; RETN (Z80; the 8080 has no NMI)
 	inx	h
 	mvi	m,45h
-	ret
-
-; Disks: nothing selected, every track unknown, buffer empty. The motor
-; is left running, as the ROM's boot leaves it, so the first access
-; doesn't wait for it to start again; the timer stops it later.
-dinit:	mvi	a,DF.MO
-	sta	s7f
-	out	DP.CTL
-	mvi	a,T.OFF
-	sta	mtim
-	xra	a
-	sta	hstact
-	sta	hstwrt
-	sta	unacnt
-	sta	rlcnt
-	dcr	a
-	lxi	h,h17trk
-	mov	m,a
-	inx	h
-	mov	m,a
-	inx	h
-	mov	m,a
 	ret
 
 ; ---- Clock: RST 1, every 2 ms ----
@@ -243,15 +331,10 @@ clk1:	lhld	tickc
 	mov	a,l		; every 512 ms: the motor-off timer
 	ora	a
 	jnz	clk9
-	lxi	h,mtim
-	ora	m
-	jz	clk9		; stopped
-	dcr	m
-	jnz	clk9
-	lda	s7f		; time: motor off, no drive selected
-	ani	0e1h
-	sta	s7f
-	out	DP.CTL
+	call	ctck		; (the driver's)
+	if	SLOTS
+	call	SL.TICK		; (and the slot's)
+	endif
 clk9:	pop	h
 	pop	psw
 	ei
@@ -260,33 +343,34 @@ clk9:	pop	h
 ticks:	lhld	tickc
 	ret
 
-; ---- Console: the 8250 at 350Q ----
+; Tick deadlines. tdead: the deadline is HL ticks from now. tpast: CY
+; while it hasn't come. Interrupts must be on.
+tdead:	xchg
+	lhld	tickc
+	dad	d
+	shld	tdl
+	ret
+tpast:	lhld	tdl
+	xchg
+	lhld	tickc
+	mov	a,l
+	sub	e
+	mov	a,h
+	sbb	d
+	ral			; CY = the sign: now < deadline
+	ret
+
+; Wait HL ticks.
+twait:	call	tdead
+tw1:	call	tpast
+	jc	tw1
+	ret
+
+
+; ---- Console: the 8250 at 350Q (coninit is with the cold boot) ----
 ; Input comes in by interrupt into a 32-byte ring at rbuf. Only the
 ; interrupt moves rin and only CONIN moves rout, so neither needs DI.
 ; A key that arrives with the ring full is dropped. Output is polled.
-
-coninit:
-	mvi	a,83h		; divisor latch
-	out	CON.LCR
-	in	GPP		; SW501 bit 6: 19200 baud, else 9600
-	ani	SW.BAU
-	mvi	a,12		; 1.8432 MHz / 16 / 9600
-	jz	ci1
-	mvi	a,6
-ci1:	out	CON
-	xra	a
-	out	CON+1
-	mvi	a,03h		; 8 bits, no parity, 1 stop
-	out	CON.LCR
-	mvi	a,0fh		; DTR, RTS, OUT1, OUT2
-	out	CON.MCR
-	mvi	a,rbuf and 0ffh
-	sta	rin
-	sta	rout
-	in	CON		; drop anything already there
-	mvi	a,01h		; interrupt on received data
-	out	CON.IER
-	ret
 
 ; RST 3: a key.
 conint:	push	psw
@@ -368,7 +452,6 @@ reader:	mvi	a,1ah		; end of file
 ; driver, so the DPH has no XLT and SECTRAN changes nothing: the disks
 ; are laid out exactly as Heath's.
 
-NDRIVE	equ	3
 SPT	equ	20		; records a track
 HSTSPT	equ	10		; host sectors a track
 BLKREC	equ	8		; records a block (1K)
@@ -384,19 +467,62 @@ seldsk:	lxi	h,0
 	jc	seld1		; on Heath CP/M)
 	push	b
 	mov	a,c
-	call	h17rdy
+	call	drvrdy
 	pop	b
 	lxi	h,0
 	rc
+; The drive's DPH, in RAM: filled in here, so the reserved tracks don't
+; carry a table. XLT 0, DIRBUF, the DPB, CSV and ALV.
 seld1:	mov	a,c
 	sta	sekdsk
-	mov	l,a		; HL = dph + 16 * drive
-	dad	h
-	dad	h
-	dad	h
-	dad	h
-	lxi	d,dph
+	add	a
+	add	a
+	mov	c,a		; C = 4 * drive
+	add	a
+	add	a
+	mov	b,a		; B = 16 * drive
+	sub	c
+	mov	c,a		; C = 12 * drive
+	mov	e,b
+	mvi	d,0
+	lxi	h,dphram
 	dad	d
+	push	h
+	xra	a
+	mov	m,a
+	inx	h
+	mov	m,a
+	lxi	d,7		; (then 6 bytes of BDOS scratch)
+	dad	d
+	lxi	d,dirbuf
+	call	stde
+	lxi	d,dpb
+	call	stde
+	push	h
+	lxi	h,csv0		; 16 bytes a drive (CKS)
+	mov	e,b
+	mvi	d,0
+	dad	d
+	xchg
+	pop	h
+	call	stde
+	push	h
+	lxi	h,alv0		; 12 bytes a drive (ALVLEN)
+	mov	e,c
+	mvi	d,0
+	dad	d
+	xchg
+	pop	h
+	call	stde
+	pop	h
+	ret
+	assert	CKS == 16
+	assert	ALVLEN == 12
+
+stde:	mov	m,e
+	inx	h
+	mov	m,d
+	inx	h
 	ret
 
 home:	lda	hstwrt		; keep a sector that is waiting to be written
@@ -537,16 +663,118 @@ mv2:	ldax	d		; from DE to HL
 	lda	erflag
 	ret
 
+	if	SLOTS
+; Drives 0-2 are the BIOS's own driver's, 3-5 the slot's. hunit := the
+; unit; CY for our own.
+dvunit:	lda	hstdsk
+	sui	3
+	jnc	dvu1
+	adi	3
+	sta	hunit
+	stc
+	ret
+dvu1:	sta	hunit
+	ret
 writehst:
-	call	h17wr
+	call	dvunit
+	jnc	wh1
+	call	cwr
+	jmp	hsterr
+wh1:	call	SL.WR
 	jmp	hsterr
 readhst:
-	call	h17rd
+	call	dvunit
+	jnc	rh1
+	call	crd
+	jmp	hsterr
+rh1:	call	SL.RD
+	jmp	hsterr
+; drvrdy - is drive A ready?
+drvrdy:	sui	3
+	jnc	SL.RDY
+	adi	3
+	jmp	crdy
+
+	else
+writehst:
+	lda	hstdsk
+	sta	hunit
+	call	cwr
+	jmp	hsterr
+readhst:
+	lda	hstdsk
+	sta	hunit
+	call	crd
+	jmp	hsterr
+drvrdy	equ	crdy
+	endif
 hsterr:	rnc
 	mvi	a,1
 	sta	erflag
 	xra	a		; the buffer is no good now
 	sta	hstact
+	ret
+
+; B.PHYS - a physical sector, for the HDOS file system (layout.inc).
+phys:	push	h
+	push	b
+	push	d
+	sta	phwr
+	lda	hstwrt		; the host buffer is needed: write it out
+	ora	a
+	cnz	writehst
+	xra	a
+	sta	hstact
+	pop	d
+	mov	a,e
+	sta	physec
+	pop	b
+	mov	a,b
+	sta	hsttrk
+	mov	a,c
+	sta	hstdsk
+	cpi	NDRIVE
+	pop	h
+	jnc	pherr
+	push	h
+	lxi	d,hstbuf
+	lda	phwr
+	ora	a
+	cnz	cp256		; a write: from the caller's buffer
+	if	SLOTS
+	call	dvunit
+	jnc	ph2
+	endif
+	lda	hstdsk
+	sta	hunit
+	lda	phwr		; read or write physec
+	call	cop
+	if	SLOTS
+	jmp	ph3
+ph2:	lda	phwr
+	call	SL.PHY
+ph3:
+	endif
+	pop	d
+	jc	pherr
+	lda	phwr
+	ora	a
+	lxi	h,hstbuf	; a read: to the caller's buffer
+	cz	cp256
+	xra	a
+	ret
+pherr:	mvi	a,1
+	stc
+	ret
+
+; Copy 256 bytes from HL to DE.
+cp256:	mvi	b,0
+cp1:	mov	a,m
+	stax	d
+	inx	h
+	inx	d
+	dcr	b
+	jnz	cp1
 	ret
 
 ; Compare or copy 3 bytes (drive, track, sector) at HL and DE, or B.
@@ -568,18 +796,28 @@ cpyn:	mov	a,m
 	jnz	cpyn
 	ret
 
+; The BIOS's own driver: the boot controller's.
+	if	CORE37
+	include	h37.asm
+crd	equ	dkrd
+cwr	equ	dkwr
+cop	equ	dkop
+crdy	equ	dkrdy
+ctck	equ	dktck
+cini	equ	dkini
+	else
 	include	h17.asm
+crd	equ	h17rd
+cwr	equ	h17wr
+cop	equ	h17op
+crdy	equ	h17rdy
+ctck	equ	h17tck
+cini	equ	h17ini
+	endif
 
-; DPHs: no XLT, scratch, DIRBUF, DPB, CSV, ALV.
-dph:	dw	0,0,0,0,dirbuf,dpb,csv0,alv0
-	dw	0,0,0,0,dirbuf,dpb,csv0+CKS,alv0+ALVLEN
-	dw	0,0,0,0,dirbuf,dpb,csv0+2*CKS,alv0+2*ALVLEN
 
 ; The Heath H17 format: single-sided, 40 tracks, 1K blocks, 3 reserved
 ; tracks (docs/research/h17.md, 4.4).
-DSM	equ	91
-CKS	equ	16
-ALVLEN	equ	DSM/8+1
 dpb:	dw	SPT
 	db	3,7,0		; BSH, BLM, EXM
 	dw	DSM,63		; DSM, DRM
@@ -587,51 +825,6 @@ dpb:	dw	SPT
 	dw	CKS,3		; CKS, OFF
 
 signon:	db	0dh,0ah,'HCOS 2.0',0dh,0ah,0
-wbmsg:	db	0dh,0ah,'Warm boot error, press a key',0dh,0ah,0
+wbmsg:	db	0dh,0ah,'BOOT ERROR',0
 
 	assert	$ <= SYSEND
-
-; ---- Variables, not on disk ----
-
-gppv	equ	BIOSRAM		; the value kept in the general purpose port
-tickc	equ	gppv+1		; 2 ms ticks since reset
-rin	equ	tickc+2		; ring: next free slot (low byte)
-rout	equ	rin+1		; ring: next key (low byte)
-dma	equ	rout+1
-; deblocking: sekdsk-seksec, hstdsk-hstsec and unadsk-unasec are each
-; drive, track, sector in that order
-sekdsk	equ	dma+2
-sektrk	equ	sekdsk+1
-seksec	equ	sektrk+1
-sekhst	equ	seksec+1
-hstdsk	equ	sekhst+1
-hsttrk	equ	hstdsk+1
-hstsec	equ	hsttrk+1
-unadsk	equ	hstsec+1
-unatrk	equ	unadsk+1
-unasec	equ	unatrk+1
-unacnt	equ	unasec+1
-hstact	equ	unacnt+1
-hstwrt	equ	hstact+1
-readop	equ	hstwrt+1
-rsflag	equ	readop+1
-wrtype	equ	rsflag+1
-erflag	equ	wrtype+1
-; the H17 driver
-s7f	equ	erflag+1	; what is in port 7FH (not the step bits)
-mtim	equ	s7f+1		; motor off, in 512 ms, 0 = stopped
-h17w	equ	mtim+1		; 1 = writing
-retry	equ	h17w+1
-physec	equ	retry+1
-tdl	equ	physec+1	; tick deadline
-h17trk	equ	tdl+2		; each drive's track, FFH = unknown
-wbtab	equ	h17trk+NDRIVE	; SYSTAB, kept from the cold boot
-rlsec	equ	wbtab+8	; warm boot: the sector being reloaded
-rlcnt	equ	rlsec+1		; reloads since the cold boot
-rbuf	equ	(rlcnt+1+1fh) and 0ffe0h ; 32 bytes, 32-aligned
-hstbuf	equ	rbuf+32		; 256
-dirbuf	equ	hstbuf+256	; 128
-alv0	equ	dirbuf+128
-csv0	equ	alv0+NDRIVE*ALVLEN
-stack	equ	csv0+NDRIVE*CKS+64
-	assert	stack <= 10000h

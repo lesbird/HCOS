@@ -1,11 +1,12 @@
 # HCOS version 2: plan
 
-- Status: **draft 0.8**, 2026-10-17. Phase 0 research done
+- Status: **draft 0.9**, 2026-10-17. Phase 0 research done
   ([research/](research/): [boot.md](research/boot.md),
-  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-5
-  done: HCOS v2 boots from an H17 disk to its own shell, BDOS and BIOS,
-  runs CP/M programs with Heath CP/M's 56K, lets them use HDOS disks, and
-  runs HDOS programs natively with the ROM in (section 7).
+  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-6
+  done: HCOS v2 boots from an H17 or H37 disk to its own shell, BDOS and
+  BIOS, runs CP/M programs with Heath CP/M's 56K (54K with an H37), lets
+  them use HDOS disks, and runs HDOS programs natively with the ROM in
+  (section 7).
 - Version 1 (the repo's top level; phases 1-6 in
   [../../docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)) runs on top of
   Heath CP/M: Heath's boot loader and BIOS, HCOS's BDOS and HCCP in the
@@ -19,7 +20,9 @@ Decided (2026-10-17):
   read and written, but not booted.
 - **Order:** CP/M programs first, then HDOS programs.
 - **Memory:** as much as possible. The target is **Heath CP/M's 56K**
-  (BDOS at E200H on a 64K H89).
+  (BDOS at E200H on a 64K H89). With an H37, the BIOS goes at E800H as
+  Heath's H17/H37 BIOS does: 54K, and the second controller's driver is
+  loaded from a file at cold boot.
 - **Machine:** the H89 first, the H8 later.
 - **Tree:** version 2 is built in `v2/`, apart from version 1, which stays
   as it is.
@@ -121,19 +124,30 @@ FFFFH
 
 - **The BDOS** is version 1's, checked against DRI's. It stays at E200H,
   3.5K with its variables and stack, as in version 1.
-- **Measured (phase 3):** the BIOS with the H17 driver, warm boot's
-  reload and the ready check is 1696 bytes of code and tables, of the 1792
-  the reserved tracks give it. The H17 driver alone is about 650 bytes and
-  deblocking 336, more than the estimates below (490 and 220). So the H37
-  driver won't fit until something gives:
-  - trimming;
-  - moving the cold boot into the boot record's sector (187 bytes free)
-    or the BDOS's space (457 bytes free after its code, but its variables
-    are there);
-  - loading the H37 driver from a file at cold boot.
-- **The BIOS** has 4K at F000H. Its jump table has the 17 CP/M 2.2 entries
-  at F000H, so programs that call the BIOS directly keep working. One BIOS
-  drives both the H17 and the H37. The research estimates:
+- **Three builds** (phase 6, decided 2026-10-17), all from one source,
+  with every address derived from the BIOS's base (`target.inc`):
+
+  | Build | BIOS | TPA | Boots from | Drives | Disk |
+  |---|---|---|---|---|---|
+  | h17 | F000H | 56K | H17 | A:-C: H17 | `build/hcos.h8d` |
+  | h37 | E800H | 54K | H17 | A:-C: H17, D:-F: H37 (`H37.COM`) | `build/hcos37.h8d` |
+  | h37h | E800H | 54K | H37 | A:-C: H37, D:-F: H17 (`H17.COM`) | `build/hcos37.h37` |
+
+  The reserved tracks hold the BIOS core with the boot controller's
+  driver. The other controller's driver is a program: at cold boot, when
+  SW501 says that controller is there, the BIOS has the shell run `A:H37`
+  or `A:H17`, which copies the driver into the BIOS's slot (2K of RAM
+  above the BIOS, `biosram.inc`) and starts it. Each driver has the same
+  entries (read, write, physical sector, ready, a 512 ms tick, init, and
+  RST 4 for the H37), so either can be the core or the slot's.
+- **Measured (phase 6):** the BIOS (with its cold boot, which sits in
+  the last 224 bytes of the BDOS's space, which the BDOS doesn't use) is
+  1924 of 2016 bytes in the h17 build, 2003 in h37 and 1766 in h37h. The
+  DPHs are filled in in RAM by SELDSK, so the reserved tracks carry no
+  table.
+- **The BIOS** (the phase 0 plan, before the three builds): 4K at F000H.
+  Its jump table has the 17 CP/M 2.2 entries at its base, so programs that
+  call the BIOS directly keep working. The research estimates:
 
   | Part | Bytes |
   |---|---|
@@ -259,7 +273,7 @@ where there's a real system to compare with.
 | 3 | **Done.** Version 1's BDOS (`src/bdos/`) and HCCP as the shell (`src/shell/shell.asm`) on the new BIOS: `build/hcos.h8d` boots HCOS. BDOS entry E206H, as Heath CP/M 64K: a 56K TPA. Warm boot checks the shell's and the BDOS's sums (kept in the boot sector by `mksys.py`) and reloads only what a program changed. SELDSK checks that a drive is ready the first time, as Heath's does. `tests/cpmdiff.sh` runs v1's CP/M tests (ASM, DDT, ED, PIP, STAT, SUBMIT, the CCP built-ins, console and file calls) on Heath CP/M and on HCOS: the screens are the same. Prompt 3.2 s after reset (Heath CP/M: 5.7 s). Sizes: shell 1866, BDOS 3127, BIOS 1696 bytes | CP/M programs native, 56K |
 | 4 | **Done.** The HDOS extension for CP/M programs (version 1's HCOS.SYS, `src/hdosx/`, run as `HDOSFS.COM`), loaded when the BDOS finds an HDOS disk. It reads HDOS sectors through the BIOS with the inverse of the BIOS's skew. Tests: CP/M's DIR, PIP (both ways, with verify), ERA, REN and STAT on an HDOS disk, the TPA (E206H, C300H with the extension), and real HDOS 2.0 reading what the CP/M programs wrote. Fixed on the way: warm boot's sums now start past what changes as the shell and BDOS run (the shell was reloaded after every command, and a BDOS error message changed the BDOS's code); the BDOS skips block numbers over DSM in a directory (an HDOS disk logged in as CP/M by STAT's select overwrote another drive's checksums); the shell loads programs only up to the TPA top | HDOS disks |
 | 5 | **Done.** HDOS programs natively, with the ROM in: version 1's HDOS.COM, in H-mode only. Its copy of the ROM's utility routines stays in the RAM under the ROM (1830H-1991H), because the ROM's own routines make SCALLs with the function byte inline, and the dispatcher reads it with RAM in. Fixed for H-mode: the RST slots went into HDOS.COM's code under the ROM (now the BIOS's console handler and clock hook, through two new BIOS entries), and S.GUP and the device, unit and overlay tables were under the ROM too (`hisys.asm`, at a fixed address in the high buffers). Keys typed while a program runs wait in the BIOS's type-ahead. `tests/difftest.sh`: v1's 9 differential tests against real HDOS 2.0, all the same. `tests/run.sh`: BASIC, HDOS PIP listing and copying both kinds of disk, real HDOS reading what it wrote, HDOS 3.0 calls. Also fixed: the BDOS's close of a file not written since open returns 0, as DRI's | HDOS programs native |
-| 6 | H37 driver and boot record. Formats: SS SD 10 x 256 (both H37 images), then DS and 16 x 256 MFM. Labels read as Heath's BIOS does | second controller |
+| 6 | **Done.** Three builds (section 4): h17 at F000H (56K, H17 only), h37 at E800H (54K, booted from the H17, H37 driver from `H37.COM`) and h37h (54K, booted from the H37, H17 driver from `H17.COM`). The H37 driver (`src/bios/h37.asm`): HALT/DRQ transfers, INTRQ on RST 4, seek and restore, 4 tries, ready check by the index, motor timer. SS SD 10 x 256 only, the format of both H37 images (DS and MFM later). The H37 boot record (`src/boot/h37boot.asm`) copies the track the ROM read and reads two more. Both boot records keep the disk's label. A new BIOS entry, B.PHYS, reads and writes a physical sector, so the HDOS file system needs no skew of its own and works on H37 disks. Tests: CP/M and HDOS disks in H37 drives (DIR, PIP both ways checked on the host, HDOS PIP, PIE), and booting from the H37 (prompt in 8.6 s; Heath's H37 CP/M 15.5 s) with the H17 as D: | second controller |
 | 7 | FORMAT, SYSGEN, DRIVES and DATE as programs. A disk HCOS makes boots HCOS | self-hosting |
 | 8 | Sizes trimmed, ready-made disks in `v2/disks/`. Release 2.0 | |
 | 9 | (later) The H8; the ideas in section 9 | |

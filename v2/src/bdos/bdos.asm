@@ -553,4 +553,4 @@ rdbuf:	ds	2
 	ds	48			; 24 levels, as DRI's
 stack	equ	$
 
-	assert	$ <= BIOSB
+	assert	$ <= BIOSCB		; (the BIOS's cold boot is above)

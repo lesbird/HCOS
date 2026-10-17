@@ -5,14 +5,21 @@
 ; BIOS's code and tables. The H17 boot record reads them all with one
 ; R.READ. The BIOS's variables and buffers follow, from BIOSRAM up, and
 ; aren't stored on disk.
+;
+; Everything follows from BIOSB, the BIOS's base, in the build's
+; target.inc: F000H for the H17 build (a 56K TPA), E800H for the H17/H37
+; build (54K; its BIOS has 2K more RAM, for the second driver).
 
-SYSB	equ	0D900h		; sector 0 of the disk is loaded here
+	include	target.inc
+
+SYSB	equ	BIOSB-1700h	; sector 0 of the disk is loaded here
 BOOTB	equ	2280h		; where the ROM loads and runs the boot record
-SHELLB	equ	0DA00h		; shell, 2K (entry SHELLB: run the command in
+SHELLB	equ	BIOSB-1600h	; shell, 2K (entry SHELLB: run the command in
 				; its buffer, SHELLB+3: prompt)
-BDOSB	equ	0E200h		; BDOS (entry BDOSB+6)
-BIOSB	equ	0F000h		; BIOS jump table
-SYSEND	equ	0F700h		; end of the reserved tracks' image
+BDOSB	equ	BIOSB-0E00h	; BDOS (entry BDOSB+6)
+SYSEND	equ	BIOSB+700h	; end of the reserved tracks' image
+BIOSCB	equ	BIOSB-0E0h	; the BIOS's cold boot: the end of the BDOS's
+				; space, which the BDOS doesn't use
 SYSLEN	equ	SYSEND-SYSB	; 1E00H: 30 sectors
 BIOSLEN	equ	SYSEND-BIOSB	; room for the BIOS's code and tables
 BIOSRAM	equ	SYSEND		; BIOS variables, buffers and stack
@@ -65,6 +72,10 @@ B.TICKS	equ	BIOSB+51	; HL = 2 ms ticks since reset
 ; RAM vector slots at 201FH up. These two serve them from there:
 B.CONINT equ	BIOSB+54	; the console's receive interrupt (EI; RET)
 B.TICKR	equ	BIOSB+57	; the ROM's clock hook: count a tick (RET)
+; A physical sector, for the HDOS file system: A = 0 read, 1 write; C =
+; drive, B = track, E = sector 0-9 (as on the disk), HL = 256 bytes. A =
+; 0, or 1 and CY on an error. The BDOS's selection isn't changed.
+B.PHYS	equ	BIOSB+60
 
 ; Hardware (H89)
 GPP	equ	0F2h		; 362Q: general purpose port (OP2.CTL), SW501 in

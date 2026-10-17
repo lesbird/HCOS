@@ -39,7 +39,7 @@ fi
 # The HCOS disk carries HDOSFS.COM and HDOS.COM: give the CP/M disk the
 # same files, so both directories are alike.
 samefiles() {
-    [ "$1" = cpm ] && "$H8DTOOL" put "$2" "$B/HDOSFS.COM" "$B/HDOS.COM" >/dev/null
+    [ "$1" = cpm ] && "$H8DTOOL" put "$2" "$B/h17/HDOSFS.COM" "$B/h17/HDOS.COM" >/dev/null
     return 0
 }
 

@@ -13,7 +13,10 @@
 
 	org	BOOTB
 
-	lxi	h,0		; sector 0 of track 0
+	jmp	start
+	ds	1Ah		; 03H-1CH: the disk's label (kept by mksys.py)
+
+start:	lxi	h,0		; sector 0 of track 0
 	lxi	d,SYSB
 	lxi	b,SYSLEN
 	call	R.READ
@@ -34,4 +37,4 @@ eloop:	in	CON.LSR
 
 emsg:	db	0dh,0ah,'?HCOS boot error',0dh,0ah,0
 
-	assert	$ <= BOOTB+100h
+	assert	$ <= BOOTB+0F8h	; (SYSTAB follows)

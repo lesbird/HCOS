@@ -56,9 +56,10 @@ SYSTLEN	equ	$-systpl
 ; ---- High buffers: just below HCOS v2's BDOS ----
 ; At a fixed address, so that hisys.asm can be assembled for it. The
 ; HDOS extension, if it is in, is moved aside (see start).
-V2BDOS	equ	0E200h			; (src/inc/layout.inc: BDOSB,
+	include	target.inc		; BIOSB, for the build
+V2BDOS	equ	BIOSB-0E00h		; (src/inc/layout.inc: BDOSB,
 V2KXVEC	equ	V2BDOS+11h		; KXVEC, KXBASE+KXSIGO, KXNEED)
-V2KXSIG	equ	0C303h
+V2KXSIG	equ	BIOSB-1600h-1700h+3
 V2KXNEED equ	V2BDOS+14h
 HI.GRT	equ	0			; GRT of each unit, 256 each (page
 					; aligned: HIFIX is)

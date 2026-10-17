@@ -188,13 +188,20 @@ li3:	mvi	a,1			; checksums are taken now
 	ret
 
 ; hdchk - is the drive being logged in an HDOS disk? Its label is
-; physical sector 9 of track 0, which BIOS record 14 starts (the BIOS
-; skews host sectors, and logical sector 7 is physical 9). If the label
-; looks right, set KXNEED, so the shell loads the HDOS extension at the
-; next warm boot, and give a select error.
-hdchk:	lxi	b,0
+; physical sector 9 of track 0 (HDOS sector 9). Through the BIOS that is
+; record 14 on an H17 (the BIOS skews host sectors: logical 7 is
+; physical 9) and record 18 on an H37 (no skew; sector IDs from 1), so
+; both are tried. If one looks like the label, set KXNEED, so the shell
+; loads the HDOS extension at the next warm boot, and give a select
+; error.
+hdchk:	mvi	c,14
+	call	hdlab
+	mvi	c,18
+hdlab:	push	b
+	lxi	b,0
 	call	B.SETTRK
-	lxi	b,14
+	pop	b
+	mvi	b,0
 	call	B.SETSEC
 	lhld	dirbuf
 	push	h
@@ -221,8 +228,7 @@ hdchk:	lxi	b,0
 	rnz
 	mvi	a,1
 	sta	KXNEED
-	pop	h
-	jmp	selerr
+	jmp	selerr			; (ends in a warm boot)
 
 ; drvbit - HL = 1 << A (A = drive 0-15).
 drvbit:	lxi	h,1

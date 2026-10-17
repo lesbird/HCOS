@@ -13,17 +13,20 @@ mkdir -p "$WORK"
 pass=0 fail=0
 
 # run_test name expect [h89run option...] -- step...
-#   The boot disk is a copy of build/$disk, left in build/test/NAME.h8d,
-#   with the files in $put on it.
+#   The boot disk is a copy of build/$disk, left in build/test/NAME.h8d
+#   (or .h37: an H37 disk, booted from the first H37 drive), with the
+#   files in $put on it.
 run_test() {
     name=$1 expect=$2
     shift 2
     opts=
     while [ $# -gt 0 ] && [ "$1" != "--" ]; do opts="$opts $1"; shift; done
     [ "$1" = "--" ] && shift
-    cp "$V2/build/$disk" "$WORK/$name.h8d"
-    for f in $put; do "$H8DTOOL" put "$WORK/$name.h8d" "$f" >/dev/null; done
-    if "$H89RUN" --disk0 "$WORK/$name.h8d" $opts --seconds 300 \
+    ext=${disk##*.} boot="--disk0"
+    [ "$ext" = h37 ] && boot="--sw501 30 --dk0"
+    cp "$V2/build/$disk" "$WORK/$name.$ext"
+    for f in $put; do "$H8DTOOL" put "$WORK/$name.$ext" "$f" >/dev/null; done
+    if "$H89RUN" $boot "$WORK/$name.$ext" $opts --seconds 300 \
             --step 'H: |B\r' "$@" --expect "$expect" \
             >"$WORK/$name.screen" 2>&1; then
         echo "PASS $name"
@@ -174,6 +177,74 @@ put="$V2/build/abs/hdos30.abs"
 run_test hdos30 'CRC FEE8 GDA C=0 GDA C=1 A=0D HDOS 3.0 OK' -- \
     --step 'A>|HDOS30\r'
 put=
+
+# The H17/H37 build (BIOS at E800H): a 54K TPA, the same system.
+disk=hcos37.h8d
+run_test h37b-shell 'XSUB     COM' -- --step 'A>|DIR\r'
+put=$V2/build/prog/tpa.com
+run_test h37b-tpa 'TPA DA06' -- --step 'A>|TPA\r'
+cp "$V2/build/hdos.h8d" "$WORK/hdos-b.h8d"
+run_test h37b-tpa-hdos 'TPA BB00' --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|DIR B:\r' --step 'Select|x' --step 'A>|TPA\r'
+put="$V2/build/hdosprog/BASIC.ABS"
+run_test h37b-basic 'XSUB     COM' -- \
+    --step 'A>|BASIC\r' --step '\n*|PRINT PEEK(0)\r' \
+    --step ' 195|BYE\r' --step 'Sure?|Y\r' --step 'A>|DIR\r'
+put=
+
+# H37 drives D:-F:, with the H37 driver loaded at cold boot (H37.COM).
+C37=$H89_DIR/disks/CPM-2-2-03-64K-H17-H37-BOOT_00A3A2A6.H37
+H37HDOS=$H89_DIR/disks/HDOS-2-H37IMGR-AND-H8DIMGR3_0096EA5B.H37
+cp "$C37" "$WORK/c37.h37"
+run_test h37-dir 'D: DUP      COM : MOVCPM17 COM : PIE      COM' \
+    --dk0 "$WORK/c37.h37" -- --step 'A>|DIR D:\r'
+run_test h37-copy 'A: R/W, Space:' --dk0 "$WORK/c37.h37" -- \
+    --step 'A>|PIP A:S.COM=D:STAT.COM[V]\r' --step 'A>|S\r'
+cp "$C37" "$WORK/h37-write.h37"
+run_test h37-write 'XSUB     COM' --dk0 "$WORK/h37-write.h37" -- \
+    --step 'A>|PIP D:=A:XSUB.COM[V]\r' --step 'A>|DIR D:XSUB.COM\r'
+mkdir -p "$WORK/h37out"
+"$H8DTOOL" get "$WORK/h37-write.h37" -d "$WORK/h37out" XSUB.COM >/dev/null 2>&1
+"$H8DTOOL" get "$V2/build/cpm.h8d" -d "$WORK" XSUB.COM >/dev/null
+cmp -s "$WORK/XSUB.COM" "$WORK/h37out/XSUB.COM" ||
+    { echo "FAIL h37-write-image (XSUB.COM on the H37 disk isn't the same)"; fail=$((fail + 1)); }
+run_test h37-nodisk 'Bdos Err On E: Select' --dk0 "$WORK/c37.h37" -- \
+    --step 'A>|DIR E:\r'
+cp "$H37HDOS" "$WORK/h37hdos.h37"
+run_test h37-hdos 'D: H37IMGR  ABS' --dk0 "$WORK/h37hdos.h37" -- \
+    --step 'A>|DIR D:\r' --step 'Select|x' --step 'A>|DIR D:\r'
+put="$V2/build/hdosprog/PIP.ABS"
+run_test h37-hdos-pip 'H37IMGR .ABS    44' --dk0 "$WORK/h37hdos.h37" -- \
+    --step 'A>|HDOS PIP\r' --step ':P:|SY3:/L\r'
+put=
+run_test h37-hdos-prog 'H89 PIE 1.5b Editor' --dk0 "$WORK/h37hdos.h37" -- \
+    --step 'A>|HDOS SY3:PIE\r'
+
+# The H17/H37 build booted from the H37 (build/hcos37.h37): the H37
+# driver is the BIOS's own, A:-C:, and H17.COM puts the H17's in the
+# slot, D:-F:.
+disk=hcos37.h37
+run_test h37h-boot 'H17 driver loaded: D: E: F:' --
+put=$V2/build/prog/tpa.com
+run_test h37h-tpa 'TPA DA06' -- --step 'A>|TPA\r'
+put=
+cp "$V2/build/cpm.h8d" "$WORK/h17-d.h8d"
+run_test h37h-h17 'D: STAT     COM : SUBMIT   COM : SYSGEN   COM' \
+    --disk0 "$WORK/h17-d.h8d" -- --step 'A>|DIR D:\r'
+run_test h37h-copy 'XSUB     COM' --disk0 "$WORK/h17-d.h8d" -- \
+    --step 'A>|PIP A:=D:XSUB.COM[V]\r' --step 'A>|DIR XSUB.COM\r'
+# Warm boot reloads the shell and the BDOS from the H37.
+"$H8DTOOL" get "$V2/build/cpm.h8d" -d "$WORK" DDT.COM >/dev/null
+put="$WORK/DDT.COM"
+run_test h37h-reload 'A: PIP      COM' -- --step 'A>|DDT\r' \
+    --step '-|FD200,E6FF,0\r' --step '-|G0\r' --step 'A>|DIR\r'
+put="$V2/build/hdosprog/BASIC.ABS"
+run_test h37h-basic ' 195' -- \
+    --step 'A>|BASIC\r' --step '\n*|PRINT PEEK(0)\r'
+put=
+cp "$H37HDOS" "$WORK/h37hdos.h37"
+run_test h37h-hdos 'B: H37IMGR  ABS' --dk1 "$WORK/h37hdos.h37" -- \
+    --step 'A>|DIR B:\r' --step 'Select|x' --step 'A>|DIR B:\r'
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
