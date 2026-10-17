@@ -1,8 +1,9 @@
 # HCOS version 2: plan
 
-- Status: **draft 0.3**, 2026-10-17. Phase 0 research done
+- Status: **draft 0.4**, 2026-10-17. Phase 0 research done
   ([research/](research/): [boot.md](research/boot.md),
-  [h17.md](research/h17.md), [h37.md](research/h37.md)). Nothing built yet.
+  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phase 1 done:
+  HCOS v2 boots from an H17 disk to a test shell (section 7).
 - Version 1 (the repo's top level; phases 1-6 in
   [../../docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)) runs on top of
   Heath CP/M: Heath's boot loader and BIOS, HCOS's BDOS and HCCP in the
@@ -192,10 +193,11 @@ FFFFH
 There's no date question. The date comes from the last `DATE` set,
 saved on the boot disk, and HDOS programs see it in S.DATE.
 
-**Speed:** MTR-90 takes about 1.2 s before the boot record runs. Reading
-the rest of the 3 tracks takes about 1 s. That's about 2-2.5 s from `B` to
-the prompt, with no BIOS.SYS to look up and read. To be measured in the
-emulator.
+**Speed:** measured in the emulator with phase 1's test shell, the prompt
+appears **2.21 s after reset**. Heath CP/M on the same disk takes 5.71 s.
+About 1.2 s of that is MTR-90 before the boot record runs, and about 1 s
+is the 30-sector read. The real shell and the BDOS are in the same read,
+so this shouldn't change much.
 
 ## 6. Shell
 
@@ -226,7 +228,7 @@ where there's a real system to compare with.
 | Phase | Deliverable | Proves |
 |---|---|---|
 | 0 | Tag `v1.0`; set up `v2/`. The research in section 8 | the unknowns before code |
-| 1 | H17 boot record and BIOS skeleton: cold boot from the reserved tracks, console, clock, memory switch, a test program in place of the shell. A host tool (`v2/tools/`) writes the reserved tracks of a copy of a Heath CP/M disk | own boot; boot time |
+| 1 | **Done.** H17 boot record and BIOS skeleton: cold boot from the reserved tracks, console with a type-ahead buffer, clock, memory switch, a test shell. `tools/mksys.py` writes the reserved tracks of a copy of a Heath CP/M disk. Measured in the emulator: the prompt 2.21 s after reset, against 5.71 s for Heath CP/M. Sizes: boot record 61 bytes, BIOS 376 | own boot; boot time |
 | 2 | The H17 driver in the BIOS: read and write, with retries. Checked by a sector test program and against `h8dtool` | own disk driver |
 | 3 | Version 1's BDOS and a 2K shell on the new BIOS: a bootable HCOS disk. Heath's ED, PIP, STAT, ASM, LOAD, DDT and SUBMIT, with `cpmdiff.sh` against Heath CP/M. TPA measured | CP/M programs native, 56K |
 | 4 | The HDOS extension for CP/M programs (version 1's HCOS.SYS moved across as HDOSFS.SYS), loaded on demand | HDOS disks |
