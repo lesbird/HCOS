@@ -1,9 +1,9 @@
 # HCOS version 2: plan
 
-- Status: **draft 1.0**, 2026-10-17. Phase 0 research done
+- Status: **1.1, HCOS 2.0 released**, 2026-10-17. Phase 0 research done
   ([research/](research/): [boot.md](research/boot.md),
-  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-7
-  done: HCOS v2 boots from an H17 or H37 disk to its own shell, BDOS and
+  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-8
+  done, and HCOS 2.0 released: HCOS v2 boots from an H17 or H37 disk to its own shell, BDOS and
   BIOS, runs CP/M programs with Heath CP/M's 56K (54K with an H37), lets
   them use HDOS disks, runs HDOS programs natively with the ROM in, and
   makes its own disks (FORMAT, SYSGEN) (section 7).
@@ -276,7 +276,7 @@ where there's a real system to compare with.
 | 5 | **Done.** HDOS programs natively, with the ROM in: version 1's HDOS.COM, in H-mode only. Its copy of the ROM's utility routines stays in the RAM under the ROM (1830H-1991H), because the ROM's own routines make SCALLs with the function byte inline, and the dispatcher reads it with RAM in. Fixed for H-mode: the RST slots went into HDOS.COM's code under the ROM (now the BIOS's console handler and clock hook, through two new BIOS entries), and S.GUP and the device, unit and overlay tables were under the ROM too (`hisys.asm`, at a fixed address in the high buffers). Keys typed while a program runs wait in the BIOS's type-ahead. `tests/difftest.sh`: v1's 9 differential tests against real HDOS 2.0, all the same. `tests/run.sh`: BASIC, HDOS PIP listing and copying both kinds of disk, real HDOS reading what it wrote, HDOS 3.0 calls. Also fixed: the BDOS's close of a file not written since open returns 0, as DRI's | HDOS programs native |
 | 6 | **Done.** Three builds (section 4): h17 at F000H (56K, H17 only), h37 at E800H (54K, booted from the H17, H37 driver from `H37.COM`) and h37h (54K, booted from the H37, H17 driver from `H17.COM`). The H37 driver (`src/bios/h37.asm`): HALT/DRQ transfers, INTRQ on RST 4, seek and restore, 4 tries, ready check by the index, motor timer. SS SD 10 x 256 only, the format of both H37 images (DS and MFM later). The H37 boot record (`src/boot/h37boot.asm`) copies the track the ROM read and reads two more. Both boot records keep the disk's label. A new BIOS entry, B.PHYS, reads and writes a physical sector, so the HDOS file system needs no skew of its own and works on H37 disks. Tests: CP/M and HDOS disks in H37 drives (DIR, PIP both ways checked on the host, HDOS PIP, PIE), and booting from the H37 (prompt in 8.6 s; Heath's H37 CP/M 15.5 s) with the H17 as D: | second controller |
 | 7 | **Done.** `src/util/`: **FORMAT** d: [HDOS] formats an H17 or H37 disk (SS SD) for CP/M (all E5H; Heath's label on the H37) or as an HDOS 2.0 data disk the same as HDOS INIT makes it (label, RGT, GRT, DIRECT.SYS; H17 headers carry the volume), and reads every track back. It is built for each build, with the drivers' own code. **SYSGEN** d: copies the reserved tracks from A: to a disk on the same controller, keeping its label, and checks them. **DATE** keeps the date HDOS programs see in A:HDOS.COM and A:HDOSFS.COM. **DRIVES** lists each drive's controller and what's in it. They replace Heath's FORMAT, SYSGEN and DUP on HCOS disks. Tests: a disk SYSGEN made boots HCOS; FORMAT's disks are checked on the host and real HDOS 2.0 mounts and uses the HDOS ones (H17 and H37). Found on the way, and fixed in the H89 emulator: an H17 sector write whose data looked like a header was dropped | self-hosting |
-| 8 | Sizes trimmed, ready-made disks in `v2/disks/`. Release 2.0 | |
+| 8 | **Done.** Sizes trimmed: SELDSK and warm boot's reload (through B.PHYS) smaller, HDOS.COM's code rebalanced; the H17/H37 BIOS has 35 bytes free, HDOS.COM about 120. Ready-made disks in `v2/disks/` (`make release`), with HDOS BASIC and EDIT. The README is the 2.0 user's guide. Release 2.0 | |
 | 9 | (later) The H8; the ideas in section 9 | |
 
 ## 8. Research (phase 0): done

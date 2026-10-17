@@ -10,8 +10,10 @@ Either kind can use either kind of disk. It is written in pure 8080
 assembly, so it runs on the H8's 8080A as well as the H89's Z80. It boots
 from an ordinary Heath CP/M disk and uses the Heath BIOS for the hardware.
 
-**Version 2**, a from-scratch rewrite that boots to its own prompt with
-no CP/M code, is being planned in [`v2/`](v2/README.md).
+**HCOS 2.0**, a from-scratch rewrite that boots to its own prompt with
+no CP/M code and runs HDOS programs with the ROM in, is in
+[`v2/`](v2/README.md), with ready-made disks in
+[`v2/disks/`](v2/disks/). The rest of this README is about version 1.
 
 Status: **phases 1–6 of the [roadmap](docs/ARCHITECTURE.md#13-development-roadmap)
 are done.**

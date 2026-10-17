@@ -77,7 +77,7 @@ CORE37.h17 = 0
 CORE37.h37 = 0
 CORE37.h37h = 1
 
-.PHONY: all tools test clean
+.PHONY: all tools test clean release
 
 all: $(B)/hcos.h8d $(B)/test17.h8d $(B)/hcos37.h8d $(B)/hcos37.h37 \
 	$(CPMTESTS) $(PROGS) \
@@ -193,6 +193,24 @@ $(B)/hdos.h8d:
 	tests/mkhdos.sh
 	mkdir -p $(B)/hdosprog
 	$(H8DTOOL) get $@ -d $(B)/hdosprog >/dev/null
+
+# The ready-made disks in disks/ (kept in the repo): the three system
+# disks, with HDOS BASIC and EDIT added. `make release` rebuilds them.
+RELEASE = disks/hcos-h17.h8d disks/hcos-h17x.h8d disks/hcos-h37.h37
+EXTRAS = $(B)/hdosprog/BASIC.ABS $(B)/hdosprog/EDIT.ABS
+release: $(RELEASE)
+disks/hcos-h17.h8d: $(B)/hcos.h8d $(B)/hdos.h8d
+	@mkdir -p $(@D)
+	cp $< $@
+	$(H8DTOOL) put $@ $(EXTRAS) >/dev/null
+disks/hcos-h17x.h8d: $(B)/hcos37.h8d $(B)/hdos.h8d
+	@mkdir -p $(@D)
+	cp $< $@
+	$(H8DTOOL) put $@ $(EXTRAS) >/dev/null
+disks/hcos-h37.h37: $(B)/hcos37.h37 $(B)/hdos.h8d
+	@mkdir -p $(@D)
+	cp $< $@
+	$(H8DTOOL) put $@ $(EXTRAS) >/dev/null
 
 test: all $(B)/hdos.h8d
 	tests/run.sh

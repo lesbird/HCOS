@@ -57,6 +57,7 @@ systpl:
 SYSTLEN	equ	$-systpl
 	assert	SYSTLEN <= 256
 
+	include	systab.asm
 	assert	$ <= ROMLIB		; code must end below the ROM library
 	include	romlib.asm		; H17 ROM routines, 1830H-1991H
 
@@ -83,7 +84,6 @@ HIFIX	equ	V2BDOS-HISIZE
 	org	ROMLIBE
 	include	syndir.asm
 	include	hdoswr.asm
-	include	systab.asm
 
 
 ; ---- Buffers (not stored in HDOS.COM) ----

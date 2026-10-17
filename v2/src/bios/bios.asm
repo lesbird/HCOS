@@ -1,9 +1,10 @@
 ; bios.asm - the HCOS v2 BIOS
 ;
 ; The CP/M 2.2 jump table at BIOSB, then HCOS's own entries. The cold
-; boot and memory switch, the console (8250) and the 2 ms clock. The console has a 32-byte type-ahead buffer, filled
-; by the 8250's receive interrupt (RST 3), so keys typed while a
-; program is busy aren't lost. Three H17 drives (h17.asm). Warm boot
+; boot and memory switch, the console (8250) and the 2 ms clock. The
+; console has a 32-byte type-ahead buffer, filled by the 8250's receive
+; interrupt (RST 3), so keys typed while a program is busy aren't lost.
+; Three H17 drives (h17.asm). Warm boot
 ; reloads the shell and the BDOS from the reserved tracks only if a
 ; program has changed them.
 ;
@@ -223,8 +224,6 @@ cks2:	pop	d		; DE = address
 ; the BDOS: 9-22) from drive A, in physical order.
 reload:	lxi	h,rlcnt		; (counted, for the tests)
 	inr	m
-	xra	a
-	sta	hunit
 	mov	a,d		; sector = (DE - D900H) / 256
 	sui	SYSB shr 8
 	sta	rlsec
@@ -234,18 +233,15 @@ rl2:	sui	10
 	inr	b
 	jmp	rl2
 rl3:	adi	10
-	sta	physec
-	mov	a,b
-	sta	hsttrk
-	xra	a		; read physec
-	call	cop
-	jc	rlerr
-	lda	rlsec		; to its place
+	mov	e,a
+	lda	rlsec		; to its place, D900H + 256 * sector
 	adi	SYSB shr 8
-	mov	d,a
-	mvi	e,0
-	lxi	h,hstbuf
-	call	cp256
+	mov	h,a
+	mvi	l,0
+	mvi	c,0		; from A:
+	xra	a		; read
+	call	phys
+	jc	rlerr
 	lxi	h,rlsec
 	inr	m
 	mov	a,m
@@ -260,8 +256,8 @@ rlerr:	lxi	h,wbmsg
 	jmp	wboot
 
 ; Page zero: JMP WBOOT at 0000H, the clock at 0008H, the console at
-; 0018H, EI; RET in the other RST slots, and RETN at 0066H in case anything touches ports
-; F0H, F1H, FAH or FBH (an NMI on the H89). Called with interrupts off.
+; 0018H, EI; RET in the other RST slots, and RETN at 0066H in case
+; anything touches ports F0H, F1H, FAH or FBH (an NMI on the H89). Called with interrupts off.
 ; 0003H-0007H (IOBYTE, drive, BDOS jump) are left as they are.
 page0:	lxi	h,0
 	mvi	m,0c3h
@@ -479,37 +475,34 @@ seld1:	mov	a,c
 	add	a
 	mov	c,a		; C = 4 * drive
 	add	a
-	add	a
-	mov	b,a		; B = 16 * drive
-	sub	c
-	mov	c,a		; C = 12 * drive
-	mov	e,b
-	mvi	d,0
-	lxi	h,dphram
+	add	a		; 16 * drive
+	mov	l,a
+	mvi	h,0
+	lxi	d,dphram
 	dad	d
-	push	h
-	xra	a
-	mov	m,a
+	push	h		; HL = this drive's DPH
+	mvi	m,0
 	inx	h
-	mov	m,a
+	mvi	m,0
 	lxi	d,7		; (then 6 bytes of BDOS scratch)
 	dad	d
 	lxi	d,dirbuf
 	call	stde
 	lxi	d,dpb
 	call	stde
-	push	h
-	lxi	h,csv0		; 16 bytes a drive (CKS)
-	mov	e,b
-	mvi	d,0
+	push	h		; CSV: as far from csv0 as the DPH from dphram
+	lxi	d,csv0-dphram-12
 	dad	d
 	xchg
 	pop	h
 	call	stde
+	mov	a,c		; ALV: alv0 + 12 * drive
+	add	c
+	add	c
 	push	h
-	lxi	h,alv0		; 12 bytes a drive (ALVLEN)
-	mov	e,c
+	mov	e,a
 	mvi	d,0
+	lxi	h,alv0
 	dad	d
 	xchg
 	pop	h
@@ -742,11 +735,12 @@ phys:	push	h
 	ora	a
 	cnz	cp256		; a write: from the caller's buffer
 	if	SLOTS
-	call	dvunit
+	call	dvunit		; (hunit)
 	jnc	ph2
-	endif
+	else
 	lda	hstdsk
 	sta	hunit
+	endif
 	lda	phwr		; read or write physec
 	call	cop
 	if	SLOTS

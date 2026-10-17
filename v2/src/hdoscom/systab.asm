@@ -1,6 +1,5 @@
-; systab.asm - the SCALL trace, .CRC16, rsbit and sjump (kept apart only
-; to place them after the ROM library; the system tables are in
-; hisys.asm)
+; systab.asm - the SCALL trace, .CRC16, rsbit and sjump (the system
+; tables are in hisys.asm)
 
 ; sctrace - print " fff" (octal) for the SCALL being made.
 sctrace: push	b
