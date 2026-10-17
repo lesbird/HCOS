@@ -17,9 +17,29 @@ SYSLEN	equ	SYSEND-SYSB	; 1E00H: 30 sectors
 BIOSLEN	equ	SYSEND-BIOSB	; room for the BIOS's code and tables
 BIOSRAM	equ	SYSEND		; BIOS variables, buffers and stack
 KXVEC	equ	BDOSB+11h	; the BDOS's hook for the HDOS extension
-; The boot record's sector ends with what warm boot checks: the length
-; and 16-bit sum of the shell's and the BDOS's code (tools/mksys.py).
+KXNEED	equ	BDOSB+14h	; set by the BDOS: an HDOS disk, no extension
+
+; Warm boot checks the shell's and the BDOS's code by their 16-bit sums,
+; from SHSUMB and BDSUMB to the end of the code: past what changes as
+; they run (the shell's command buffer; the BDOS's error vectors, which
+; programs may patch, its hook and KXNEED). The boot record's sector
+; ends with the lengths and sums (tools/mksys.py).
+SHSUMB	equ	SHELLB+0AAh	; (after the buffer and $$$.SUB's FCB)
+BDSUMB	equ	BDOSB+15h
 SYSTAB	equ	SYSB+0F8h	; shell length, sum, BDOS length, sum
+
+; The HDOS extension, HDOSFS.SYS: loaded by the shell below itself when
+; an HDOS disk is in use. It holds the HDOS file system, which CP/M
+; programs then use through the BDOS's hook. 0006H points at it then.
+KXEND	equ	SHELLB		; (D900H-D9FFH is free after the cold boot)
+KXSIZE	equ	1700h
+KXBASE	equ	KXEND-KXSIZE
+KXSIGO	equ	3		; signature "HCKX" at KXBASE+3
+KX.HOOK	equ	KXBASE+7	; JMP kxhook
+KX.RST	equ	KXBASE+10	; JMP kxboot: reset, hook, TPA top
+KX.VER	equ	KXBASE+13	; version byte: must be KXVER
+KXVER	equ	2
+KX.LEN	equ	KXBASE+14	; its code's length
 
 ; BIOS entries
 B.BOOT	equ	BIOSB

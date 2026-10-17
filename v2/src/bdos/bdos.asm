@@ -59,6 +59,9 @@ kxv:	stc
 	ret
 	nop
 	assert	kxv == KXVEC
+kxnd:	db	0		; an HDOS disk was found, with no extension
+	assert	kxnd == KXNEED
+	assert	$ == BDSUMB
 
 ; ---- Entry and exit ----
 
@@ -476,18 +479,23 @@ errboot: call	errmsg
 	jmp	BOOT
 
 ; errmsg - "Bdos Err On d: " and the message at HL.
+; (The drive letter is printed, not put in the message: warm boot
+; checks the BDOS's code by its sum.)
 errmsg:	push	h
 	call	crlf
+	lxi	h,merr
+	call	pstr
 	lda	seldsk
 	adi	'A'
-	sta	mdsk
-	lxi	h,merr
+	mov	c,a
+	call	conout
+	lxi	h,mdsk
 	call	pstr
 	pop	h
 	jmp	pstr
 
-merr:	db	'Bdos Err On '
-mdsk:	db	' : $'
+merr:	db	'Bdos Err On $'
+mdsk:	db	': $'
 mbad:	db	'Bad Sector$'
 msel:	db	'Select$'
 mro:	db	'R/O$'

@@ -6,11 +6,12 @@ or Heath CP/M code, and runs CP/M and HDOS programs natively: each kind
 gets the memory map its own operating system gives it. CP/M programs get
 Heath CP/M's 56K TPA.
 
-Status: **phase 3 done**. HCOS v2 boots from an H17 disk with its own
+Status: **phase 4 done**. HCOS v2 boots from an H17 disk with its own
 boot record, BIOS, BDOS and shell, to an `A>` prompt 3.2 s after reset
 (Heath CP/M: 5.7 s). CP/M programs get Heath CP/M's 56K, and Heath's own
 tools (ASM, DDT, ED, PIP, STAT, SUBMIT) give the same screens as on Heath
-CP/M.
+CP/M. CP/M programs can use HDOS disks: the first time one is used, HCOS
+loads its HDOS file system (HDOSFS.COM) below the shell.
 The plan is [docs/PLAN.md](docs/PLAN.md), and the phase 0 research is in
 [docs/research/](docs/research/).
 
@@ -22,7 +23,7 @@ repository and stays as it is.
 | Path | Contents |
 |---|---|
 | `docs/` | The plan, and the design notes as phases land |
-| `src/` | Sources: `boot/` (boot records), `bios/`, `bdos/`, `shell/`, `inc/` (the memory layout) |
+| `src/` | Sources: `boot/` (boot records), `bios/`, `bdos/`, `shell/`, `hdosx/` (the HDOS extension), `inc/` (the memory layout) |
 | `tools/` | Host tools: `mksys.py` writes HCOS into a disk's reserved tracks |
 | `tests/` | Emulator tests |
 

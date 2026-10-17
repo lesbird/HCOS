@@ -71,10 +71,10 @@ wboot:	lxi	sp,stack
 	xra	a
 	sta	hstact
 	lxi	h,wbtab	; the shell: sectors 1-8
-	mvi	b,1
+	lxi	b,SHSUMB
 	call	chksys
 	lxi	h,wbtab+4	; the BDOS: sectors 9-22
-	mvi	b,9
+	lxi	b,BDSUMB
 	call	chksys
 gocpm:	mvi	a,0c3h		; 0005H: JMP to the BDOS
 	sta	0005h
@@ -84,17 +84,15 @@ gocpm:	mvi	a,0c3h		; 0005H: JMP to the BDOS
 	mov	c,a
 	jmp	SHELLB+3
 
-; HL -> the length and sum of a part that starts at sector B. Reload
-; it from drive A if its sum isn't right any more.
+; HL -> the length and sum of the code from BC. Reload the part it is
+; in from drive A if the sum isn't right any more.
 chksys:	mov	e,m		; DE = length
 	inx	h
 	mov	d,m
 	inx	h
 	push	h
-	mov	h,b		; HL = its address, D900H + 256 * B
-	mvi	l,0
-	lxi	b,SYSB
-	dad	b
+	mov	h,b
+	mov	l,c
 	push	h
 	lxi	b,0		; BC = the sum
 cks1:	mov	a,d
@@ -119,7 +117,9 @@ cks2:	pop	d		; DE = address
 	rz
 ; Read sectors from the one at DE up to the next part (the shell: 1-8,
 ; the BDOS: 9-22) from drive A, in physical order.
-reload:	xra	a
+reload:	lxi	h,rlcnt		; (counted, for the tests)
+	inr	m
+	xra	a
 	sta	hstdsk
 	mov	a,d		; sector = (DE - D900H) / 256
 	sui	SYSB shr 8
@@ -212,6 +212,7 @@ dinit:	mvi	a,DF.MO
 	sta	hstact
 	sta	hstwrt
 	sta	unacnt
+	sta	rlcnt
 	dcr	a
 	lxi	h,h17trk
 	mov	m,a
@@ -619,7 +620,8 @@ tdl	equ	physec+1	; tick deadline
 h17trk	equ	tdl+2		; each drive's track, FFH = unknown
 wbtab	equ	h17trk+NDRIVE	; SYSTAB, kept from the cold boot
 rlsec	equ	wbtab+8	; warm boot: the sector being reloaded
-rbuf	equ	(rlsec+1+1fh) and 0ffe0h ; 32 bytes, 32-aligned
+rlcnt	equ	rlsec+1		; reloads since the cold boot
+rbuf	equ	(rlcnt+1+1fh) and 0ffe0h ; 32 bytes, 32-aligned
 hstbuf	equ	rbuf+32		; 256
 dirbuf	equ	hstbuf+256	; 128
 alv0	equ	dirbuf+128

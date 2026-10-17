@@ -36,6 +36,13 @@ if [ $# -eq 0 ]; then
     set -- $(cd "$V2/tests/cpm" && ls *.asm *.steps | sed 's/\.[a-z]*$//')
 fi
 
+# The HCOS disk carries HDOSFS.COM: give the CP/M disk the same file, so
+# both directories are alike.
+samefiles() {
+    [ "$1" = cpm ] && "$H8DTOOL" put "$2" "$B/HDOSFS.COM" >/dev/null
+    return 0
+}
+
 compare() {
     name=$1 what=$2
     if [ ! -s "$WORK/$name-cpm.out" ]; then
@@ -57,6 +64,7 @@ steps_test() {
     for os in cpm hcos; do
         disk=$WORK/$name-$os.h8d
         cp "$B/$os.h8d" "$disk"
+        samefiles "$os" "$disk"
         set -- --step 'H: |B\r'
         while IFS= read -r line; do
             case $line in
@@ -93,6 +101,7 @@ for name in "$@"; do
     for os in cpm hcos; do
         disk=$WORK/$name-$os.h8d
         cp "$B/$os.h8d" "$disk"
+        samefiles "$os" "$disk"
         "$H8DTOOL" put "$disk" "$com" >/dev/null
         "$H89RUN" --disk0 "$disk" --seconds 120 \
             --step 'H: |B\r' \

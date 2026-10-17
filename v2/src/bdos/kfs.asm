@@ -135,6 +135,9 @@ sd0:	sta	logged			; 0: log it in
 	lda	logged
 	ora	a
 	rnz
+	lda	KXVEC			; no HDOS extension (the hook is
+	cpi	37h			; still STC): is it an HDOS disk?
+	cz	hdchk
 	; Log it in.
 	lda	seldsk
 	call	drvbit
@@ -184,6 +187,43 @@ li3:	mvi	a,1			; checksums are taken now
 	sta	logged
 	ret
 
+; hdchk - is the drive being logged in an HDOS disk? Its label is
+; physical sector 9 of track 0, which BIOS record 14 starts (the BIOS
+; skews host sectors, and logical sector 7 is physical 9). If the label
+; looks right, set KXNEED, so the shell loads the HDOS extension at the
+; next warm boot, and give a select error.
+hdchk:	lxi	b,0
+	call	B.SETTRK
+	lxi	b,14
+	call	B.SETSEC
+	lhld	dirbuf
+	push	h
+	mov	b,h
+	mov	c,l
+	call	B.SETDMA
+	call	B.READ
+	pop	h
+	ora	a
+	rnz				; unreadable: not HDOS
+	lxi	d,0Eh			; 256-byte sectors
+	dad	d
+	mov	a,m
+	ora	a
+	rnz
+	inx	h
+	mov	a,m
+	cpi	1
+	rnz
+	lxi	d,4Fh-0Fh		; 10 a track
+	dad	d
+	mov	a,m
+	cpi	10
+	rnz
+	mvi	a,1
+	sta	KXNEED
+	pop	h
+	jmp	selerr
+
 ; drvbit - HL = 1 << A (A = drive 0-15).
 drvbit:	lxi	h,1
 	ani	0Fh
@@ -193,7 +233,7 @@ db1:	rz
 	jmp	db1
 
 ; mapalv - mark the blocks of the directory entry at HL used (C = 1)
-; or free (C = 0).
+; or free (C = 0). Block numbers over DSM are skipped.
 mapalv:	mov	a,c
 	sta	mamode
 	lxi	d,F.MAP
@@ -205,11 +245,14 @@ ma1:	push	b
 	ora	e
 	jz	ma2
 	push	h
-	xchg
+	lhld	dsm			; past the end of the disk: a
+	call	cmpde			; directory that isn't CP/M's (an
+	jc	ma3			; HDOS disk); the bit would land in
+	xchg				; whatever follows the vector
 	lda	mamode
 	mov	c,a
 	call	setalv
-	pop	h
+ma3:	pop	h
 ma2:	pop	b
 	dcr	b
 	jnz	ma1

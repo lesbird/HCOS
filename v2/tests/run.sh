@@ -6,13 +6,15 @@
 V2=$(cd "$(dirname "$0")/.." && pwd)
 H89_DIR=${H89_DIR:-$V2/../../H89}
 H89RUN=$H89_DIR/build/h89run
+H8DTOOL=$H89_DIR/build/h8dtool
 [ -x "$H89RUN" ] || { echo "missing $H89RUN: build the H89 emulator or set H89_DIR" >&2; exit 2; }
 WORK=$V2/build/test
 mkdir -p "$WORK"
 pass=0 fail=0
 
 # run_test name expect [h89run option...] -- step...
-#   The boot disk is a copy of build/$disk, left in build/test/NAME.h8d.
+#   The boot disk is a copy of build/$disk, left in build/test/NAME.h8d,
+#   with the files in $put on it.
 run_test() {
     name=$1 expect=$2
     shift 2
@@ -20,7 +22,8 @@ run_test() {
     while [ $# -gt 0 ] && [ "$1" != "--" ]; do opts="$opts $1"; shift; done
     [ "$1" = "--" ] && shift
     cp "$V2/build/$disk" "$WORK/$name.h8d"
-    if "$H89RUN" --disk0 "$WORK/$name.h8d" $opts --seconds 120 \
+    for f in $put; do "$H8DTOOL" put "$WORK/$name.h8d" "$f" >/dev/null; done
+    if "$H89RUN" --disk0 "$WORK/$name.h8d" $opts --seconds 300 \
             --step 'H: |B\r' "$@" --expect "$expect" \
             >"$WORK/$name.screen" 2>&1; then
         echo "PASS $name"
@@ -75,6 +78,43 @@ run_test wboot 'Bytes Remaining On A: ' -- --step 'A>|STAT\r' \
 # both are reloaded from the reserved tracks.
 run_test reload 'XSUB     COM' -- --step 'A>|DDT\r' \
     --step '-|FDA00,EFFF,0\r' --step '-|G0\r' --step 'A>|DIR\r'
+
+# HDOS disks. The first use of one gives a select error and loads
+# HDOSFS.SYS at the warm boot; after that CP/M programs use it as a disk.
+cp "$V2/build/hdos.h8d" "$WORK/hdos-b.h8d"
+run_test hdos-load 'HDOS disks: HDOSFS loaded' --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|DIR B:\r' --step 'Select|x'
+cp "$V2/build/hdos.h8d" "$WORK/cpm-on-hdos-1.h8d"
+run_test cpm-on-hdos 'B: SYSGEN   ABS : DDT      COM : X        COM' \
+    --disk1 "$WORK/cpm-on-hdos-1.h8d" -- \
+    --step 'A>|DIR B:\r' --step 'Select|x' \
+    --step 'A>|DIR B:\r' \
+    --step 'A>|PIP B:=A:D*.COM[V]\r' \
+    --step 'A>|PIP B:=A:XSUB.COM[V]\r' \
+    --step 'A>|ERA B:DUP.COM\r' \
+    --step 'A>|REN B:X.COM=B:XSUB.COM\r' \
+    --step 'A>|PIP A:B.ABS=B:BASIC.ABS[OV]\r' \
+    --step 'A>|DIR B:\r'
+cp "$V2/build/hdos.h8d" "$WORK/hdos-b.h8d"
+run_test stat-on-hdos 'Bytes Remaining On B: 15k' --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|DIR B:\r' --step 'Select|x' \
+    --step 'A>|STAT B:DSK:\r' --step 'A>|STAT B:*.*\r'
+# The TPA: 56K (to E206H), and to C300H while the extension is in.
+put=$V2/build/prog/tpa.com
+run_test tpa 'TPA E206' -- --step 'A>|TPA\r'
+run_test tpa-hdos 'TPA C300' --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|DIR B:\r' --step 'Select|x' --step 'A>|TPA\r'
+put=
+# Real HDOS 2.0 reads what the CP/M programs wrote.
+if "$H89RUN" --disk0 "$WORK/cpm-on-hdos-1.h8d" --seconds 120 \
+        --step 'H: |B\r' --step 'ACTION?|\r' --step ')?|14-Oct-86\r' \
+        --step '>|CAT *.COM\r' --expect 'DDT     .COM    19' \
+        >"$WORK/hdos-reads-cpm.screen" 2>&1; then
+    echo "PASS hdos-reads-cpm"; pass=$((pass + 1))
+else
+    echo "FAIL hdos-reads-cpm (screen in build/test/hdos-reads-cpm.screen)"
+    fail=$((fail + 1))
+fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

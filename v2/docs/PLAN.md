@@ -1,10 +1,11 @@
 # HCOS version 2: plan
 
-- Status: **draft 0.6**, 2026-10-17. Phase 0 research done
+- Status: **draft 0.7**, 2026-10-17. Phase 0 research done
   ([research/](research/): [boot.md](research/boot.md),
-  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-3
+  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-4
   done: HCOS v2 boots from an H17 disk to its own shell, BDOS and BIOS,
-  and runs CP/M programs with Heath CP/M's 56K (section 7).
+  runs CP/M programs with Heath CP/M's 56K, and lets them use HDOS disks
+  (section 7).
 - Version 1 (the repo's top level; phases 1-6 in
   [../../docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)) runs on top of
   Heath CP/M: Heath's boot loader and BIOS, HCOS's BDOS and HCCP in the
@@ -156,14 +157,20 @@ FFFFH
   everything works.
 - **The shell** is 2K at DA00H, like the CCP, so programs that keep the CCP
   (top of TPA = (0006H)-0806H) and return to it with RET work as on CP/M.
-- **HDOS disks, from CP/M programs:** the HDOS file system is an
-  extension, the file `HDOSFS.SYS` (version 1's HCOS.SYS, about 4K). It goes below the shell only while
-  an HDOS disk is logged in, so the TPA is 56K unless it is in use. The
-  BDOS marks a drive as HDOS when it logs it in. At the next warm boot the
-  shell loads the extension and hooks it in, as in version 1. A CP/M
-  program that logs in an HDOS disk for the first time without the
-  extension gets a select error. Running it again works. `DIR B:` at the
-  prompt is enough to load the extension.
+- **HDOS disks, from CP/M programs** (done in phase 4): the HDOS file
+  system is an extension (version 1's HCOS.SYS, 4K, `src/hdosx/`), in the
+  file `HDOSFS.COM`. It is in memory only once an HDOS disk has been used,
+  so the TPA is 56K until then.
+  - Without it, the BDOS checks each disk it logs in for an HDOS label
+    (four bytes of track 0, sector 9). On an HDOS disk it sets KXNEED
+    and gives "Bdos Err On B: Select".
+  - At the next warm boot the shell sees KXNEED and runs `A:HDOSFS`,
+    which copies the extension to C300H-DA00H and hooks it into the
+    BDOS. It says "HDOS disks: HDOSFS loaded". Running the program again
+    works, and `DIR B:` at the prompt is enough to load it.
+  - It stays until the next cold boot, with the TPA top at C300H
+    (48.75K). At each warm boot the shell calls its KX.RST, which resets
+    it, hooks it again and sets 0006H.
 - **HDOS programs:** for an `.ABS`, the loader reads the SCALL layer and
   the HDOS file system into the top of the HDOS program area, below the
   shell. CP/M disks work from HDOS programs through the BDOS, as with
@@ -244,7 +251,7 @@ where there's a real system to compare with.
 | 1 | **Done.** H17 boot record and BIOS skeleton: cold boot from the reserved tracks, console with a type-ahead buffer, clock, memory switch, a test shell. `tools/mksys.py` writes the reserved tracks of a copy of a Heath CP/M disk. Measured in the emulator: the prompt 2.21 s after reset, against 5.71 s for Heath CP/M. Sizes: boot record 61 bytes, BIOS 376 | own boot; boot time |
 | 2 | **Done.** The H17 driver in the BIOS (`src/bios/h17.asm`): read and write, with retries, motor and seek timing, not-ready and write-protect errors, the volume ignored. DRI's blocking/deblocking, with Heath's skew applied in the BIOS (the DPH has no XLT). Tests: the test shell reads a whole disk (CP/M and HDOS) and writes with each write type, and `tests/h17img.py` checks the sums and the image byte for byte. A whole disk reads in 41 s (4 turns a track for the skew, plus the steps). BIOS: 1426 bytes | own disk driver |
 | 3 | **Done.** Version 1's BDOS (`src/bdos/`) and HCCP as the shell (`src/shell/shell.asm`) on the new BIOS: `build/hcos.h8d` boots HCOS. BDOS entry E206H, as Heath CP/M 64K: a 56K TPA. Warm boot checks the shell's and the BDOS's sums (kept in the boot sector by `mksys.py`) and reloads only what a program changed. SELDSK checks that a drive is ready the first time, as Heath's does. `tests/cpmdiff.sh` runs v1's CP/M tests (ASM, DDT, ED, PIP, STAT, SUBMIT, the CCP built-ins, console and file calls) on Heath CP/M and on HCOS: the screens are the same. Prompt 3.2 s after reset (Heath CP/M: 5.7 s). Sizes: shell 1866, BDOS 3127, BIOS 1696 bytes | CP/M programs native, 56K |
-| 4 | The HDOS extension for CP/M programs (version 1's HCOS.SYS moved across as HDOSFS.SYS), loaded on demand | HDOS disks |
+| 4 | **Done.** The HDOS extension for CP/M programs (version 1's HCOS.SYS, `src/hdosx/`, run as `HDOSFS.COM`), loaded when the BDOS finds an HDOS disk. It reads HDOS sectors through the BIOS with the inverse of the BIOS's skew. Tests: CP/M's DIR, PIP (both ways, with verify), ERA, REN and STAT on an HDOS disk, the TPA (E206H, C300H with the extension), and real HDOS 2.0 reading what the CP/M programs wrote. Fixed on the way: warm boot's sums now start past what changes as the shell and BDOS run (the shell was reloaded after every command, and a BDOS error message changed the BDOS's code); the BDOS skips block numbers over DSM in a directory (an HDOS disk logged in as CP/M by STAT's select overwrote another drive's checksums); the shell loads programs only up to the TPA top | HDOS disks |
 | 5 | HDOS programs natively: ROM in, system area, SCALLs, .LINK, .LOADO, ^C handlers. `difftest.sh` against real HDOS 2.0, BASIC | HDOS programs native |
 | 6 | H37 driver and boot record. Formats: SS SD 10 x 256 (both H37 images), then DS and 16 x 256 MFM. Labels read as Heath's BIOS does | second controller |
 | 7 | FORMAT, SYSGEN, DRIVES and DATE as programs. A disk HCOS makes boots HCOS | self-hosting |

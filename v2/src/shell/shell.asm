@@ -7,7 +7,8 @@
 ;   - CAT is DIR, as on HDOS;
 ;   - NAME runs NAME.ABS, through HDOS.COM, when there is no NAME.COM.
 ;     (Until HDOS programs run natively, phase 5.)
-; Loading the HDOS extension comes in phase 4.
+; When the BDOS has found an HDOS disk (KXNEED), the shell loads the HDOS
+; extension HDOSFS.SYS at the next boot (kxload.asm).
 ; Written from the CP/M 2.2 documentation; no DRI code.
 
 	.8080
@@ -24,6 +25,10 @@ IOCDISK	equ	0004h		; user << 4 + drive
 cbmax:	db	127		; command buffer, as f10 wants it
 cblen:	db	0
 cbuf:	ds	128
+subfcb:	db	1,'$$$     SUB',0,0,0,0
+	ds	17
+	db	0
+	assert	$ == SHSUMB	; warm boot checks the code from here
 
 ; ---- Start ----
 
@@ -43,6 +48,7 @@ ccpcmd:	lxi	sp,stack
 	mvi	c,13		; reset disks: FFH if $$$.SUB is there
 	call	sys
 	sta	submit
+	call	kxinit		; the HDOS extension: load or hook
 	pop	d
 	call	setusr
 	pop	b
@@ -714,9 +720,14 @@ ld1:	push	h
 	jnz	ld2
 	lxi	d,128
 	dad	d
-	xchg			; up to the CCP
+	xchg			; up to the shell, or the HDOS
+	lhld	BDOS+1		; extension below it
+	mvi	l,0
+	mov	a,h
+	cpi	SHELLB shr 8
+	jc	ld1a
 	lxi	h,SHELLB
-	call	cmpde
+ld1a:	call	cmpde
 	xchg
 	jnc	ld1
 	lxi	h,mbadld
@@ -864,9 +875,7 @@ mabs:	db	'ABS'
 mhdos:	db	'HDOS    COM'
 
 
-subfcb:	db	1,'$$$     SUB',0,0,0,0
-	ds	17
-	db	0
+	include	kxload.asm
 
 
 ; ---- Variables ----

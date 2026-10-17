@@ -29,6 +29,7 @@ $(BASE17):
 	rm -rf $(B)/tmp
 
 # CP/M test programs (tests/cpm/*.asm), run by tests/cpmdiff.sh.
+PROGS = $(patsubst tests/prog/%.asm,$(B)/prog/%.com,$(wildcard tests/prog/*.asm))
 CPMTESTS = $(patsubst tests/cpm/%.asm,$(B)/cpm/%.com,$(wildcard tests/cpm/*.asm))
 $(B)/cpm/%.cim: tests/cpm/%.asm tests/cpm/test.inc $(INC) | $(ZMAC)
 	@mkdir -p $(@D)
@@ -40,7 +41,7 @@ PARTS  = $(B)/boot/h17boot.cim $(B)/bdos/bdos.cim $(B)/bios/bios.cim
 
 .PHONY: all tools test clean
 
-all: $(B)/hcos.h8d $(B)/test17.h8d $(CPMTESTS)
+all: $(B)/hcos.h8d $(B)/test17.h8d $(CPMTESTS) $(PROGS)
 
 tools: $(ZMAC)
 
@@ -52,7 +53,13 @@ $(B)/%.cim: src/%.asm $(INC) | $(ZMAC)
 	$(ZMAC) $(ZFLAGS) -I $(<D) --oo cim,lst -o $@ -o $(@:.cim=.lst) $<
 
 $(B)/bdos/bdos.cim: $(wildcard src/bdos/*.asm)
-$(B)/shell/shell.cim: src/shell/shell.asm
+$(B)/shell/shell.cim: $(wildcard src/shell/*.asm)
+
+# HDOSFS.COM: a front part that copies the HDOS extension (kext, built
+# for KXBASE) up there, then the extension's image.
+$(B)/hdosx/kext.cim: $(wildcard src/hdosx/*.asm)
+$(B)/HDOSFS.COM: $(B)/hdosx/hdosfsc.cim $(B)/hdosx/kext.cim
+	cat $^ >$@
 
 # mksys1 OUT SHELL
 define mksys1
@@ -60,12 +67,25 @@ define mksys1
 	    --shell $(2) --bdos $(B)/bdos/bdos.cim --bios $(B)/bios/bios.cim
 endef
 
-$(B)/hcos.h8d: $(PARTS) $(B)/shell/shell.cim tools/mksys.py $(BASE17)
+$(B)/hcos.h8d: $(PARTS) $(B)/shell/shell.cim tools/mksys.py $(BASE17) \
+		$(B)/HDOSFS.COM
 	$(call mksys1,$@,$(B)/shell/shell.cim)
+	$(H8DTOOL) put $@ $(B)/HDOSFS.COM >/dev/null
 $(B)/test17.h8d: $(PARTS) $(B)/shell/tshell.cim tools/mksys.py $(BASE17)
 	$(call mksys1,$@,$(B)/shell/tshell.cim)
 
-test: all
+# Programs the tests run (tests/prog/*.asm).
+$(B)/prog/%.cim: tests/prog/%.asm $(INC) | $(ZMAC)
+	@mkdir -p $(@D)
+	$(ZMAC) $(ZFLAGS) --oo cim,lst -o $@ -o $(@:.cim=.lst) $<
+$(B)/prog/%.com: $(B)/prog/%.cim
+	cp $< $@
+
+# An HDOS 2.0 disk with room on it, for the tests (tests/mkhdos.sh).
+$(B)/hdos.h8d:
+	tests/mkhdos.sh
+
+test: all $(B)/hdos.h8d
 	tests/run.sh
 	tests/cpmdiff.sh
 

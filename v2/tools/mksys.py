@@ -8,7 +8,8 @@ Heath put there is replaced; the rest of the disk, with its directory and
 files, is copied as it is.
 
 The boot record's sector ends with the table warm boot checks (SYSTAB in
-layout.inc): the length and 16-bit sum of the shell's and the BDOS's code.
+layout.inc): the length and 16-bit sum of the shell's and the BDOS's code,
+from SHSUMB and BDSUMB on.
 
     mksys.py BASE.h8d OUT.h8d --boot B --shell S --bios B [--bdos B]
 
@@ -20,6 +21,7 @@ import sys
 SYSB = 0xD900
 SYSEND = 0xF700
 SYSTAB = 0xF8               # in the boot record's sector
+SUMFROM = {'shell': 0xAA, 'bdos': 0x15}   # SHSUMB, BDSUMB
 PARTS = [                    # name, address, room
     ('boot', SYSB, SYSTAB),
     ('shell', 0xDA00, 0x800),
@@ -43,9 +45,10 @@ def main():
     for name, addr, room in PARTS:
         path = getattr(a, name)
         code = open(path, 'rb').read() if path else b''
-        if name in ('shell', 'bdos'):
-            table += (len(code).to_bytes(2, 'little') +
-                      (sum(code) & 0xFFFF).to_bytes(2, 'little'))
+        if name in SUMFROM:
+            part = code[SUMFROM[name]:]
+            table += (len(part).to_bytes(2, 'little') +
+                      (sum(part) & 0xFFFF).to_bytes(2, 'little'))
         if not path:
             continue
         if len(code) > room:
