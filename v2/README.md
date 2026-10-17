@@ -6,10 +6,11 @@ or Heath CP/M code, and runs CP/M and HDOS programs natively: each kind
 gets the memory map its own operating system gives it. CP/M programs get
 Heath CP/M's 56K TPA.
 
-Status: **phase 2 done**. HCOS v2 boots from an H17 disk on its own boot
-record and BIOS, to a test shell, 2.2 s after reset (Heath CP/M: 5.7 s).
-The BIOS has its own H17 driver and reads and writes CP/M and HDOS
-disks.
+Status: **phase 3 done**. HCOS v2 boots from an H17 disk with its own
+boot record, BIOS, BDOS and shell, to an `A>` prompt 3.2 s after reset
+(Heath CP/M: 5.7 s). CP/M programs get Heath CP/M's 56K, and Heath's own
+tools (ASM, DDT, ED, PIP, STAT, SUBMIT) give the same screens as on Heath
+CP/M.
 The plan is [docs/PLAN.md](docs/PLAN.md), and the phase 0 research is in
 [docs/research/](docs/research/).
 
@@ -21,7 +22,7 @@ repository and stays as it is.
 | Path | Contents |
 |---|---|
 | `docs/` | The plan, and the design notes as phases land |
-| `src/` | Sources: `boot/` (boot records), `bios/`, `shell/`, `inc/` (the memory layout) |
+| `src/` | Sources: `boot/` (boot records), `bios/`, `bdos/`, `shell/`, `inc/` (the memory layout) |
 | `tools/` | Host tools: `mksys.py` writes HCOS into a disk's reserved tracks |
 | `tests/` | Emulator tests |
 
@@ -38,5 +39,12 @@ make test    # boot it in the emulator and check it
 ```
 
 Boot it with `h89run --disk0 build/hcos.h8d`, then `B` at the `H:`
-prompt. The test shell knows VER, TIME and WAIT, and the disk tests
-SUM, FILL, HALF and DIRW (see `src/shell/tshell.asm`).
+prompt. The disk is Heath CP/M's own (without CONFIGUR, MOVCPM17 and
+ASM, for room), with HCOS in its reserved tracks.
+
+`make test` runs:
+- `tests/run.sh`: the BIOS on `build/test17.h8d`, whose test shell has
+  disk tests (SUM, FILL, HALF, DIRW: see `src/shell/tshell.asm`), and
+  the system on `build/hcos.h8d`;
+- `tests/cpmdiff.sh`: CP/M programs and sessions (`tests/cpm/`) on
+  Heath CP/M and on HCOS, which must give the same screens.

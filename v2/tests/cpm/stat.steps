@@ -1,0 +1,8 @@
+# STAT: disk status, file sizes, attributes.
+A>|STAT\r
+A>|STAT A:\r
+A>|STAT *.COM\r
+A>|STAT PIP.COM $R/O\r
+A>|STAT PIP.COM $R/W\r
+A>|STAT DSK:\r
+A>|STAT USR:\r

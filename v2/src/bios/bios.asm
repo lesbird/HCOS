@@ -4,7 +4,8 @@
 ; boot and memory switch, the console (8250) and the 2 ms clock. The console has a 32-byte type-ahead buffer, filled
 ; by the 8250's receive interrupt (RST 3), so keys typed while a
 ; program is busy aren't lost. Three H17 drives (h17.asm). Warm boot
-; re-enters the shell without reloading it (phase 3).
+; reloads the shell and the BDOS from the reserved tracks only if a
+; program has changed them.
 ;
 ; The boot record jumps to BOOT with interrupts off and the ROM still
 ; in. Written from the CP/M 2.2 interface and the phase 0 research
@@ -46,21 +47,118 @@ boot:	lxi	sp,stack
 	call	page0
 	call	coninit
 	call	dinit
+	lxi	h,SYSTAB	; the sums, before a program can touch them
+	lxi	d,wbtab
+	mvi	b,8
+	call	cpyn
 	ei
 	lxi	h,signon
 	call	print
+	mvi	a,0a9h		; IOBYTE, as Heath's (the BIOS ignores it)
+	sta	0003h
 	xra	a
 	sta	0004h		; drive A:, user 0
-	mov	c,a
-	jmp	SHELLB
+	jmp	gocpm
 
+; Warm boot: reload the shell and the BDOS if their code has changed.
 wboot:	lxi	sp,stack
 	di
 	call	page0
 	ei
+	lda	hstwrt		; a sector still to be written
+	ora	a
+	cnz	writehst
+	xra	a
+	sta	hstact
+	lxi	h,wbtab	; the shell: sectors 1-8
+	mvi	b,1
+	call	chksys
+	lxi	h,wbtab+4	; the BDOS: sectors 9-22
+	mvi	b,9
+	call	chksys
+gocpm:	mvi	a,0c3h		; 0005H: JMP to the BDOS
+	sta	0005h
+	lxi	h,BDOSB+6
+	shld	0006h
 	lda	0004h
 	mov	c,a
 	jmp	SHELLB+3
+
+; HL -> the length and sum of a part that starts at sector B. Reload
+; it from drive A if its sum isn't right any more.
+chksys:	mov	e,m		; DE = length
+	inx	h
+	mov	d,m
+	inx	h
+	push	h
+	mov	h,b		; HL = its address, D900H + 256 * B
+	mvi	l,0
+	lxi	b,SYSB
+	dad	b
+	push	h
+	lxi	b,0		; BC = the sum
+cks1:	mov	a,d
+	ora	e
+	jz	cks2
+	mov	a,m
+	add	c
+	mov	c,a
+	jnc	cks1a
+	inr	b
+cks1a:	inx	h
+	dcx	d
+	jmp	cks1
+cks2:	pop	d		; DE = address
+	pop	h
+	mov	a,m		; the same?
+	cmp	c
+	jnz	reload
+	inx	h
+	mov	a,m
+	cmp	b
+	rz
+; Read sectors from the one at DE up to the next part (the shell: 1-8,
+; the BDOS: 9-22) from drive A, in physical order.
+reload:	xra	a
+	sta	hstdsk
+	mov	a,d		; sector = (DE - D900H) / 256
+	sui	SYSB shr 8
+	sta	rlsec
+rl1:	mvi	b,0		; track = sector / 10
+rl2:	sui	10
+	jc	rl3
+	inr	b
+	jmp	rl2
+rl3:	adi	10
+	sta	physec
+	mov	a,b
+	sta	hsttrk
+	call	h17rdp
+	jc	rlerr
+	lda	rlsec		; to its place
+	adi	SYSB shr 8
+	mov	d,a
+	mvi	e,0
+	lxi	h,hstbuf
+	mvi	b,0
+rl4:	mov	a,m
+	stax	d
+	inx	h
+	inx	d
+	dcr	b
+	jnz	rl4
+	lxi	h,rlsec
+	inr	m
+	mov	a,m
+	cpi	9		; the shell ends at sector 8
+	rz
+	cpi	(BIOSB-SYSB) shr 8 ; the BDOS at the BIOS
+	rz
+	jmp	rl1
+rlerr:	lxi	h,wbmsg
+	call	print
+	call	conin
+	jmp	wboot
 
 ; Page zero: JMP WBOOT at 0000H, the clock at 0008H, the console at
 ; 0018H, EI; RET in the other RST slots, and RETN at 0066H in case anything touches ports
@@ -102,11 +200,15 @@ p0rst:	mvi	m,0fbh
 	mvi	m,45h
 	ret
 
-; Disks: nothing selected, every track unknown, buffer empty.
-dinit:	xra	a
+; Disks: nothing selected, every track unknown, buffer empty. The motor
+; is left running, as the ROM's boot leaves it, so the first access
+; doesn't wait for it to start again; the timer stops it later.
+dinit:	mvi	a,DF.MO
 	sta	s7f
 	out	DP.CTL
+	mvi	a,T.OFF
 	sta	mtim
+	xra	a
 	sta	hstact
 	sta	hstwrt
 	sta	unacnt
@@ -269,6 +371,16 @@ seldsk:	lxi	h,0
 	mov	a,c
 	cpi	NDRIVE
 	rnc			; no such drive
+	mov	a,e		; the first select since a reset: is the
+	rar			; drive ready? (A select error if not, as
+	jc	seld1		; on Heath CP/M)
+	push	b
+	mov	a,c
+	call	h17rdy
+	pop	b
+	lxi	h,0
+	rc
+seld1:	mov	a,c
 	sta	sekdsk
 	mov	l,a		; HL = dph + 16 * drive
 	dad	h
@@ -467,6 +579,7 @@ dpb:	dw	SPT
 	dw	CKS,3		; CKS, OFF
 
 signon:	db	0dh,0ah,'HCOS 2.0',0dh,0ah,0
+wbmsg:	db	0dh,0ah,'Warm boot error, press a key',0dh,0ah,0
 
 	assert	$ <= SYSEND
 
@@ -504,7 +617,9 @@ retry	equ	h17w+1
 physec	equ	retry+1
 tdl	equ	physec+1	; tick deadline
 h17trk	equ	tdl+2		; each drive's track, FFH = unknown
-rbuf	equ	(h17trk+NDRIVE+1fh) and 0ffe0h ; 32 bytes, 32-aligned
+wbtab	equ	h17trk+NDRIVE	; SYSTAB, kept from the cold boot
+rlsec	equ	wbtab+8	; warm boot: the sector being reloaded
+rbuf	equ	(rlsec+1+1fh) and 0ffe0h ; 32 bytes, 32-aligned
 hstbuf	equ	rbuf+32		; 256
 dirbuf	equ	hstbuf+256	; 128
 alv0	equ	dirbuf+128

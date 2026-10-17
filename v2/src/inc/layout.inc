@@ -8,13 +8,18 @@
 
 SYSB	equ	0D900h		; sector 0 of the disk is loaded here
 BOOTB	equ	2280h		; where the ROM loads and runs the boot record
-SHELLB	equ	0DA00h		; shell, 2K (entry SHELLB: cold, SHELLB+3: warm)
+SHELLB	equ	0DA00h		; shell, 2K (entry SHELLB: run the command in
+				; its buffer, SHELLB+3: prompt)
 BDOSB	equ	0E200h		; BDOS (entry BDOSB+6)
 BIOSB	equ	0F000h		; BIOS jump table
 SYSEND	equ	0F700h		; end of the reserved tracks' image
 SYSLEN	equ	SYSEND-SYSB	; 1E00H: 30 sectors
 BIOSLEN	equ	SYSEND-BIOSB	; room for the BIOS's code and tables
 BIOSRAM	equ	SYSEND		; BIOS variables, buffers and stack
+KXVEC	equ	BDOSB+11h	; the BDOS's hook for the HDOS extension
+; The boot record's sector ends with what warm boot checks: the length
+; and 16-bit sum of the shell's and the BDOS's code (tools/mksys.py).
+SYSTAB	equ	SYSB+0F8h	; shell length, sum, BDOS length, sum
 
 ; BIOS entries
 B.BOOT	equ	BIOSB

@@ -1,7 +1,8 @@
 ; h17.asm - the H17 driver, part of bios.asm
 ;
 ; h17rd / h17wr: read or write host sector hstsec (0-9, before skew) of
-; track hsttrk on drive hstdsk (0-2), to or from hstbuf. NC on success.
+; track hsttrk on drive hstdsk (0-2), to or from hstbuf. h17rdp reads
+; physical sector physec instead. NC on success.
 ; CY and A = error code on failure, after the retries:
 ;   01H wrong track   02H no header sync   04H header checksum
 ;   08H data checksum 10H sector not found 20H no data sync
@@ -34,10 +35,13 @@ T.SELECT equ	40		; another drive, motor running: 80 ms
 T.OFF	equ	15		; motor off after 15 x 512 ms (about 8 s)
 RETRIES	equ	10
 
-h17rd:	xra	a
+h17rd:	call	toskew
+h17rdp:	xra	a
 	jmp	h17op
-h17wr:	mvi	a,1
+h17wr:	call	toskew
+	mvi	a,1
 h17op:	sta	h17w
+	lda	hstdsk
 	call	select
 	mvi	a,RETRIES
 	sta	retry
@@ -78,12 +82,28 @@ hdone:	push	psw
 	ei
 	ret
 
-; Select the drive and start the motor, waiting as long as they need.
-; Stops the motor-off timer.
-select:	xra	a
+; h17rdy: NC if drive A (0-2) is ready: a hole comes by within a turn
+; and a half after the motor is up to speed.
+h17rdy:	call	select
+	lxi	h,150
+	call	tdead
+rdy1:	in	DP.CTL
+	rar
+	jc	rdy2
+	call	tpast
+	jc	rdy1
+rdy2:	cmc
+	push	psw
+	mvi	a,T.OFF
 	sta	mtim
-	lda	hstdsk
-	mov	b,a
+	pop	psw
+	ret
+
+; Select drive A and start the motor, waiting as long as they need.
+; Stops the motor-off timer.
+select:	mov	b,a
+	xra	a
+	sta	mtim
 	mvi	a,02h		; DS0, DS1, DS2
 sel1:	dcr	b
 	jm	sel2
@@ -174,14 +194,6 @@ trkptr:	lda	hstdsk
 ; Find the header of physical sector skew[hstsec] on hsttrk, 20 tries
 ; (2 turns). Returns with interrupts off, just after the header.
 findhdr:
-	lxi	h,skew
-	lda	hstsec
-	add	l
-	mov	l,a
-	jnc	fh0
-	inr	h
-fh0:	mov	a,m
-	sta	physec
 	mvi	b,20
 fh1:	push	b
 	call	waitsec
@@ -386,5 +398,15 @@ tw1:	call	tpast
 	jc	tw1
 	ret
 
-; Logical host sector to physical: 4 sectors apart, as Heath's disks are.
+; physec := the physical sector of host sector hstsec: 4 sectors apart,
+; as on Heath's disks.
+toskew:	lxi	h,skew
+	lda	hstsec
+	add	l
+	mov	l,a
+	jnc	tsk1
+	inr	h
+tsk1:	mov	a,m
+	sta	physec
+	ret
 skew:	db	0,4,8,2,6,1,5,9,3,7

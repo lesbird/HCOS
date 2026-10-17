@@ -1,10 +1,10 @@
 # HCOS version 2: plan
 
-- Status: **draft 0.5**, 2026-10-17. Phase 0 research done
+- Status: **draft 0.6**, 2026-10-17. Phase 0 research done
   ([research/](research/): [boot.md](research/boot.md),
-  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1 and 2
-  done: HCOS v2 boots from an H17 disk to a test shell, and its BIOS
-  reads and writes H17 disks (section 7).
+  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-3
+  done: HCOS v2 boots from an H17 disk to its own shell, BDOS and BIOS,
+  and runs CP/M programs with Heath CP/M's 56K (section 7).
 - Version 1 (the repo's top level; phases 1-6 in
   [../../docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)) runs on top of
   Heath CP/M: Heath's boot loader and BIOS, HCOS's BDOS and HCCP in the
@@ -120,14 +120,16 @@ FFFFH
 
 - **The BDOS** is version 1's, checked against DRI's. It stays at E200H,
   3.5K with its variables and stack, as in version 1.
-- **Measured (phase 2):** the BIOS with the H17 driver is 1426 bytes of
-  code and tables: 390 for the jump table, boot, console and clock, 336
-  for deblocking, 624 for the H17 driver and 63 for tables. That is more
-  than the estimates below (490 for the driver, 220 for deblocking). The
-  reserved tracks give the BIOS 1792 bytes, so the H37 driver won't fit
-  until something gives: trimming, moving the cold boot into the boot
-  record's sector (195 bytes free) or the end of the BDOS's space, or
-  loading the H37 driver from a file.
+- **Measured (phase 3):** the BIOS with the H17 driver, warm boot's
+  reload and the ready check is 1696 bytes of code and tables, of the 1792
+  the reserved tracks give it. The H17 driver alone is about 650 bytes and
+  deblocking 336, more than the estimates below (490 and 220). So the H37
+  driver won't fit until something gives:
+  - trimming;
+  - moving the cold boot into the boot record's sector (187 bytes free)
+    or the BDOS's space (457 bytes free after its code, but its variables
+    are there);
+  - loading the H37 driver from a file at cold boot.
 - **The BIOS** has 4K at F000H. Its jump table has the 17 CP/M 2.2 entries
   at F000H, so programs that call the BIOS directly keep working. One BIOS
   drives both the H17 and the H37. The research estimates:
@@ -202,11 +204,13 @@ FFFFH
 There's no date question. The date comes from the last `DATE` set,
 saved on the boot disk, and HDOS programs see it in S.DATE.
 
-**Speed:** measured in the emulator with phase 1's test shell, the prompt
-appears **2.21 s after reset**. Heath CP/M on the same disk takes 5.71 s.
-About 1.2 s of that is MTR-90 before the boot record runs, and about 1 s
-is the 30-sector read. The real shell and the BDOS are in the same read,
-so this shouldn't change much.
+**Speed:** measured in the emulator, the prompt appears **3.2 s after
+reset**. Heath CP/M on the same disk takes 5.7 s. About 1.2 s is MTR-90
+before the boot record runs, about 1 s the 30-sector read, and about 1 s
+the shell's disk reset, which logs in drive A: and reads its directory, as
+CP/M's CCP does. (With phase 1's test shell, which doesn't touch the disk,
+it was 2.2 s.) The BIOS leaves the motor running from the ROM's boot, so
+that first access doesn't wait 1 s for it.
 
 ## 6. Shell
 
@@ -239,7 +243,7 @@ where there's a real system to compare with.
 | 0 | Tag `v1.0`; set up `v2/`. The research in section 8 | the unknowns before code |
 | 1 | **Done.** H17 boot record and BIOS skeleton: cold boot from the reserved tracks, console with a type-ahead buffer, clock, memory switch, a test shell. `tools/mksys.py` writes the reserved tracks of a copy of a Heath CP/M disk. Measured in the emulator: the prompt 2.21 s after reset, against 5.71 s for Heath CP/M. Sizes: boot record 61 bytes, BIOS 376 | own boot; boot time |
 | 2 | **Done.** The H17 driver in the BIOS (`src/bios/h17.asm`): read and write, with retries, motor and seek timing, not-ready and write-protect errors, the volume ignored. DRI's blocking/deblocking, with Heath's skew applied in the BIOS (the DPH has no XLT). Tests: the test shell reads a whole disk (CP/M and HDOS) and writes with each write type, and `tests/h17img.py` checks the sums and the image byte for byte. A whole disk reads in 41 s (4 turns a track for the skew, plus the steps). BIOS: 1426 bytes | own disk driver |
-| 3 | Version 1's BDOS and a 2K shell on the new BIOS: a bootable HCOS disk. Heath's ED, PIP, STAT, ASM, LOAD, DDT and SUBMIT, with `cpmdiff.sh` against Heath CP/M. TPA measured | CP/M programs native, 56K |
+| 3 | **Done.** Version 1's BDOS (`src/bdos/`) and HCCP as the shell (`src/shell/shell.asm`) on the new BIOS: `build/hcos.h8d` boots HCOS. BDOS entry E206H, as Heath CP/M 64K: a 56K TPA. Warm boot checks the shell's and the BDOS's sums (kept in the boot sector by `mksys.py`) and reloads only what a program changed. SELDSK checks that a drive is ready the first time, as Heath's does. `tests/cpmdiff.sh` runs v1's CP/M tests (ASM, DDT, ED, PIP, STAT, SUBMIT, the CCP built-ins, console and file calls) on Heath CP/M and on HCOS: the screens are the same. Prompt 3.2 s after reset (Heath CP/M: 5.7 s). Sizes: shell 1866, BDOS 3127, BIOS 1696 bytes | CP/M programs native, 56K |
 | 4 | The HDOS extension for CP/M programs (version 1's HCOS.SYS moved across as HDOSFS.SYS), loaded on demand | HDOS disks |
 | 5 | HDOS programs natively: ROM in, system area, SCALLs, .LINK, .LOADO, ^C handlers. `difftest.sh` against real HDOS 2.0, BASIC | HDOS programs native |
 | 6 | H37 driver and boot record. Formats: SS SD 10 x 256 (both H37 images), then DS and 16 x 256 MFM. Labels read as Heath's BIOS does | second controller |

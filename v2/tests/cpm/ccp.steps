@@ -1,0 +1,14 @@
+# CCP built-ins: SAVE, REN, ERA, USER, TYPE, DIR with a drive.
+A>|SAVE 2 S.COM\r
+A>|REN T.COM=S.COM\r
+A>|DIR T.COM\r
+A>|USER 2\r
+A>|SAVE 1 U2.COM\r
+A>|DIR\r
+A>|ERA U2.COM\r
+A>|USER 0\r
+A>|ERA T.COM\r
+A>|DIR A:*.COM\r
+A>|TYPE NOSUCH.TXT\r
+A>|ERA *.XYZ\r
+A>|DIR B:\r
