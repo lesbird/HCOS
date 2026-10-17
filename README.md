@@ -265,7 +265,9 @@ or at `$H89_DIR`.
 make tools   # build the pinned zmac assembler into tools/zmac/
 make         # assemble everything into build/
 make test    # make test disks and run all 60 emulator tests
-make hcos    # build/disks/hcos.h8d and hcos37.h37: disks that boot HCOS
+make hcos    # build/disks/hcos.h8d and hcos37.h37: disks that boot HCOS,
+             # and hcos-full.h8d and hcos37-full.h37 with HDOS.COM,
+             # ERRORMSG.SYS, BASIC.ABS and EDIT.ABS added
 ```
 
 The tests are mostly **differential**: the same program or keystrokes run

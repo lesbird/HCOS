@@ -13,12 +13,18 @@ differs between them, so the CCP is found by DRI's copyright line.
 --base is where the kernel was built to run (CCPB, e.g. DA00); it must
 match the CCP being replaced. The DRI CCP checks the BDOS's 6-byte
 serial number, so that is copied from the BDOS being replaced.
+
+The Heath BIOS's sign-on (in BIOS.SYS) is changed to name HCOS, in
+place and at the same length.
 """
 import argparse
 import sys
 
 CCPLEN = 0x800
 BDOSLEN = 0xD80              # BDOS up to 80H below the BIOS
+SIGNON = b'HEATH/ZENITH CP/M 2.2X03  09/17/81'
+HCOSON = b'HCOS ON HEATH/ZENITH CP/M 2.2X03  '
+assert len(SIGNON) == len(HCOSON)
 
 
 def put(disk, off, room, path, what, serial=False):
@@ -60,6 +66,13 @@ def main():
     put(disk, bdos, BDOSLEN, a.bdos, 'BDOS', serial=True)
     if a.ccp:
         put(disk, ccp, CCPLEN, a.ccp, 'HCCP')
+    n = disk.count(SIGNON)
+    if n == 1:
+        i = disk.find(SIGNON)
+        disk[i:i + len(SIGNON)] = HCOSON
+        print('BIOS sign-on: ' + HCOSON.decode().rstrip())
+    else:
+        print(f'BIOS sign-on: {n} copies of the Heath sign-on, not changed')
     open(a.out, 'wb').write(disk)
     print(f'{a.out}: HCOS installed (CCP at {base:04X}H)')
 

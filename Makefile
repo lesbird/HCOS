@@ -71,6 +71,23 @@ $(B)/disks/hcos.h8d: $(B)/disks/hdos.h8d $(KERNEL) tools/sysgen.py
 $(B)/disks/hcos37.h37: $(B)/disks/hdos.h8d $(KERNEL) tools/sysgen.py
 	$(call hcosdisk,$(B)/disks/cpm37.h37,$@,h37,D200)
 
+# Full HCOS disks: the boot disks above plus HDOS.COM, ERRORMSG.SYS and
+# HDOS programs, ready to run BASIC at the A> prompt. (The test disks
+# stay bare, as the tests need their free space.)
+HDOSPROGS = BASIC.ABS EDIT.ABS
+define fulldisk
+	cp $< $@
+	cp $(HDOSCOM) $(@D)/HDOS.COM
+	$(H89DIR)/build/h8dtool put $@ --replace $(@D)/HDOS.COM \
+	    $(@D)/hdosprog/ERRORMSG.SYS \
+	    $(addprefix $(@D)/hdosprog/,$(HDOSPROGS)) >/dev/null
+	rm $(@D)/HDOS.COM
+endef
+$(B)/disks/hcos-full.h8d: $(B)/disks/hcos.h8d $(HDOSCOM)
+	$(fulldisk)
+$(B)/disks/hcos37-full.h37: $(B)/disks/hcos37.h37 $(HDOSCOM)
+	$(fulldisk)
+
 $(B)/hdos.cim: src/hdoscom/hdos.asm $(wildcard src/hdoscom/*.asm) $(INC) | $(ZMAC)
 	$(assemble)
 
@@ -100,7 +117,8 @@ test-hcos: all disks $(B)/disks/hcos.h8d $(B)/disks/hcos37.h37
 	CPMDISK=hcos tests/run.sh
 	CPMDISK=hcos tests/difftest.sh
 
-hcos: $(B)/disks/hcos.h8d $(B)/disks/hcos37.h37
+hcos: $(B)/disks/hcos.h8d $(B)/disks/hcos37.h37 \
+	    $(B)/disks/hcos-full.h8d $(B)/disks/hcos37-full.h37
 
 clean:
 	rm -rf $(B)
