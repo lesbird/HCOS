@@ -318,6 +318,4 @@ svrst1:	ds	3			; CP/M's page zero RST 1 and RST 7
 svrst7:	ds	3
 
 ; Date given to programs. CP/M 2.2 has no clock, so it is fixed.
-sdate:	db	'01-Jan-80'
-sdatc:	dw	((80-70) << 9) + (1 << 5) + 1	; coded: yyyyyyy mmmm ddddd
 

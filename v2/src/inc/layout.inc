@@ -45,6 +45,7 @@ KXSIGO	equ	3		; signature "HCKX" at KXBASE+3
 KX.HOOK	equ	KXBASE+7	; JMP kxhook
 KX.RST	equ	KXBASE+10	; JMP kxboot: reset, hook, TPA top
 KX.VER	equ	KXBASE+13	; version byte: must be KXVER
+KX.DATE	equ	KXBASE+16	; the date for new HDOS files (coded)
 KXVER	equ	2
 KX.LEN	equ	KXBASE+14	; its code's length
 

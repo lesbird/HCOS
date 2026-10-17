@@ -11,7 +11,15 @@
 
 	org	TPA
 
-	lhld	img+KX.LEN-KXBASE	; its code's length
+	jmp	start
+
+; The date for new HDOS files: DATE.COM changes it here, in the file, as
+; in HDOS.COM. 'HCDT', 'dd-Mmm-yy', the coded date.
+	db	'HCDT'
+	db	'01-Jan-80'
+sdatc:	dw	((80-70) << 9) + (1 << 5) + 1
+
+start:	lhld	img+KX.LEN-KXBASE	; its code's length
 	mov	b,h
 	mov	c,l
 	lxi	h,img
@@ -24,6 +32,8 @@ mv1:	mov	a,m
 	mov	a,b
 	ora	c
 	jnz	mv1
+	lhld	sdatc
+	shld	KX.DATE
 	lxi	d,msg
 	mvi	c,C_WRITESTR
 	call	BDOS

@@ -23,6 +23,8 @@ KX	equ	1			; (the kernel extension)
 	db	KXVER
 	dw	kxcend-KXBASE		; KX.LEN: what HDOSFS.COM copies
 	assert	$ == KX.LEN+2
+HDATE:	dw	((80-70) << 9) + (1 << 5) + 1	; KX.DATE: for new files (from
+	assert	HDATE == KX.DATE	; HDOSFS.COM's, which DATE sets)
 
 ; kxboot - at every boot: start afresh, take the BDOS's FCB calls on
 ; HDOS disks, and keep programs below the extension.
@@ -43,7 +45,6 @@ kxboot:	call	kxreset
 	include	hdosdir.asm
 
 ; ---- Data ----
-HDATE:	dw	((80-70) << 9) + (1 << 5) + 1	; date for new files: 1-Jan-80
 psec:	dw	secbuf			; directory block buffer
 pgrt:	dw	grtbuf			; GRT of unit 0 (then 1, 2, 3)
 chp:	dw	0			; current slot

@@ -5,7 +5,9 @@
 ; boot) and has drives D:-F:. Booted from the H37 it is the BIOS's own
 ; driver (bios.asm includes it), with A:-C:. Its entries are the same as
 ; every driver's (h17.asm): dkrd, dkwr, dkop, dkrdy, dktck, dkini, and
-; dkisr for RST 4. Its variables are in biosram.inc. Units 0-2. For
+; dkisr for RST 4. Its variables are in biosram.inc. Units 0-2. (Its
+; internal names start with k, so that it can be assembled with the H17
+; driver, as FORMAT.COM does.) For
 ; now: single-sided, single-density disks, 40 tracks of 10 x 256 bytes,
 ; Heath's format 0 and the HDOS H37 format, the same layout as the H17.
 ; The physical sector of host sector n is n + 1: the interleave is in the
@@ -25,80 +27,80 @@ CN.INT	equ	01h		; INTRQ interrupt enable
 CN.DRQ	equ	02h		; DRQ ends a HALT
 CN.MO	equ	08h		; motor
 CN.DS0	equ	10h		; drive select 0 (1: 20H, 2: 40H)
-RATE	equ	3		; step rate: 30 ms
-FD.RES	equ	00h+RATE	; Restore
-FD.SEEK	equ	18h+RATE	; Seek, head load
+KRATE	equ	3		; step rate: 30 ms
+FD.RES	equ	00h+KRATE	; Restore
+FD.SEEK	equ	18h+KRATE	; Seek, head load
 FD.RD	equ	88h		; Read Sector
 FD.WR	equ	0A8h		; Write Sector
 FD.FI	equ	0D0h		; Force Interrupt, no interrupt
-T.MOTOR	equ	500		; ticks: motor start, 1 s
-T.SELECT equ	28		; another drive, motor running: 56 ms
-T.SETTLE equ	10		; after a seek: 20 ms
-T.OFF	equ	15		; motor off after 15 x 512 ms
-RETRIES	equ	4
+K.MOTOR	equ	500		; ticks: motor start, 1 s
+K.SELECT equ	28		; another drive, motor running: 56 ms
+K.SETTLE equ	10		; after a seek: 20 ms
+K.OFF	equ	15		; motor off after 15 x 512 ms
+KRETRIES	equ	4
 
 ; ---- Entries ----
 
 dkop:	ora	a		; (B.PHYS) physical sector 0-9
 	lda	physec
-	jnz	wr1
-	jmp	rd1
+	jnz	kwr1
+	jmp	krd1
 dkrd:	lda	hstsec
-rd1:	inr	a		; sectors are numbered from 1
+krd1:	inr	a		; sectors are numbered from 1
 	sta	dksec
 	mvi	a,FD.RD
-	jmp	op
+	jmp	kop
 dkwr:	lda	hstsec
-wr1:	inr	a
+kwr1:	inr	a
 	sta	dksec
 	mvi	a,FD.WR
-op:	sta	dkcmd
+kop:	sta	dkcmd
 	lda	hunit
-	call	select
-	mvi	a,RETRIES
+	call	kselect
+	mvi	a,KRETRIES
 	sta	dkrtry
-op1:	call	seek
-	jc	op3
-	call	xfer
-	jnc	op9
-op3:	mov	b,a
+kop1:	call	kseek
+	jc	kop3
+	call	kxfer
+	jnc	kop9
+kop3:	mov	b,a
 	ani	0c0h		; not ready or write protect: give up
 	mov	a,b
-	jnz	op8
+	jnz	kop8
 	lxi	h,dkrtry
 	dcr	m
-	jz	op8
+	jz	kop8
 	mov	a,m
-	cpi	RETRIES/2	; halfway: find track 0 again
-	jnz	op1
-	call	trkptr
+	cpi	KRETRIES/2	; halfway: find track 0 again
+	jnz	kop1
+	call	ktrkptr
 	mvi	m,0ffh
-	jmp	op1
-op8:	stc
-op9:	push	psw
+	jmp	kop1
+kop8:	stc
+kop9:	push	psw
 	lda	latch		; DRQ off, the motor timer on
 	out	DK.CON
-	mvi	a,T.OFF
+	mvi	a,K.OFF
 	sta	mtim37
 	pop	psw
 	ret
 
 ; Is unit A ready: does the index hole come by within 400 ms?
-dkrdy:	call	select
+dkrdy:	call	kselect
 	mvi	a,FD.FI
 	out	DK.CMD
 	lxi	h,200
 	call	tdead
-rdy1:	in	DK.CMD		; Type I status: bit 1 = index
+krdy1:	in	DK.CMD		; Type I status: bit 1 = index
 	ani	02h
-	jnz	rdy2
+	jnz	krdy2
 	call	tpast
-	jc	rdy1
+	jc	krdy1
 	mvi	a,80h
 	stc
-	jmp	op9
-rdy2:	xra	a
-	jmp	op9
+	jmp	kop9
+krdy2:	xra	a
+	jmp	kop9
 
 ; Every 512 ms: the motor-off timer.
 dktck:	lda	mtim37
@@ -122,7 +124,7 @@ dkisr:	push	psw
 	sta	h37st
 	lda	h37act
 	ora	a
-	jz	isr9
+	jz	kisr9
 	xra	a
 	sta	h37act
 	pop	psw
@@ -131,7 +133,7 @@ dkisr:	push	psw
 	lda	h37st
 	ei
 	pchl
-isr9:	pop	psw
+kisr9:	pop	psw
 	ei
 	ret
 
@@ -154,26 +156,26 @@ dkini:	xra	a
 ; ---- Inside ----
 
 ; Select unit A and start the motor, waiting as long as they need.
-select:	mov	b,a
+kselect:	mov	b,a
 	xra	a
 	sta	mtim37
 	mvi	a,CN.DS0
-sel1:	dcr	b
-	jm	sel2
+ksel1:	dcr	b
+	jm	ksel2
 	add	a
-	jmp	sel1
-sel2:	mov	b,a
+	jmp	ksel1
+ksel2:	mov	b,a
 	lda	latch
 	mov	c,a
 	mov	a,b
 	ori	CN.MO+CN.INT
 	sta	latch
 	out	DK.CON
-	lxi	h,T.MOTOR
+	lxi	h,K.MOTOR
 	mov	a,c
 	ani	CN.MO
 	jz	twait		; the motor was off
-	lxi	h,T.SELECT
+	lxi	h,K.SELECT
 	mov	a,c
 	ani	0f0h
 	cmp	b
@@ -181,7 +183,7 @@ sel2:	mov	b,a
 	ret
 
 ; HL = this unit's entry in dktrk.
-trkptr:	lda	hunit
+ktrkptr:	lda	hunit
 	lxi	h,dktrk
 	add	l
 	mov	l,a
@@ -191,16 +193,16 @@ trkptr:	lda	hunit
 
 ; Seek to hsttrk; restore first if the track is unknown. CY, A = the
 ; status on an error.
-seek:	call	trkptr
+kseek:	call	ktrkptr
 	mov	a,m
 	inr	a
-	jnz	sk1
+	jnz	ksk1
 	mvi	a,FD.RES
-	call	type1
+	call	ktype1
 	rc
-	call	trkptr
+	call	ktrkptr
 	mvi	m,0
-sk1:	lda	hsttrk
+ksk1:	lda	hsttrk
 	cmp	m
 	rz
 	mvi	a,1		; track register = where we are
@@ -212,18 +214,18 @@ sk1:	lda	hsttrk
 	lda	hsttrk		; data register = where to go
 	out	DK.DAT
 	mvi	a,FD.SEEK
-	call	type1
+	call	ktype1
 	rc
-	call	trkptr
+	call	ktrkptr
 	lda	hsttrk
 	mov	m,a
-	lxi	h,T.SETTLE
+	lxi	h,K.SETTLE
 	call	twait
 	ora	a
 	ret
 
 ; A Type I command: issue it and wait for INTRQ. CY on a seek error.
-type1:	lxi	h,t1done
+ktype1:	lxi	h,kt1done
 	shld	h37cmp
 	mvi	h,1
 	mov	l,a
@@ -232,21 +234,21 @@ type1:	lxi	h,t1done
 	mov	a,l
 	out	DK.CMD
 	ei
-	jmp	$		; INTRQ goes to t1done
-t1done:	ani	90h		; not ready, seek error
+	jmp	$		; INTRQ goes to kt1done
+kt1done:	ani	90h		; not ready, seek error
 	rz
 	stc
 	ret
 
 ; Read or write (dkcmd) sector dksec of the track under the head, with
 ; hstbuf. CY, A = the status bits on an error.
-xfer:	mvi	a,1
+kxfer:	mvi	a,1
 	out	DK.INT
 	lda	dksec
 	out	DK.CMD		; sector register
 	xra	a
 	out	DK.INT
-	lxi	h,xdone
+	lxi	h,kxdone
 	shld	h37cmp
 	mvi	a,1
 	sta	h37act
@@ -256,23 +258,23 @@ xfer:	mvi	a,1
 	lxi	d,hstbuf
 	lda	dkcmd
 	cpi	FD.WR
-	lxi	h,wloop
-	jz	xf1
-	lxi	h,rloop
-xf1:	out	DK.CMD
+	lxi	h,kwloop
+	jz	kxf1
+	lxi	h,krloop
+kxf1:	out	DK.CMD
 	ei
 	pchl
-rloop:	hlt			; DRQ ends it
+krloop:	hlt			; DRQ ends it
 	in	DK.DAT
 	stax	d
 	inx	d
 	pchl
-wloop:	ldax	d
+kwloop:	ldax	d
 	hlt
 	out	DK.DAT
 	inx	d
 	pchl
-xdone:	mov	b,a		; INTRQ: the command is over
+kxdone:	mov	b,a		; INTRQ: the command is over
 	lda	latch
 	out	DK.CON
 	mov	a,b

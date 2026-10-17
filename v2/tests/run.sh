@@ -88,7 +88,7 @@ cp "$V2/build/hdos.h8d" "$WORK/hdos-b.h8d"
 run_test hdos-load 'HDOS disks: HDOSFS loaded' --disk1 "$WORK/hdos-b.h8d" -- \
     --step 'A>|DIR B:\r' --step 'Select|x'
 cp "$V2/build/hdos.h8d" "$WORK/cpm-on-hdos-1.h8d"
-run_test cpm-on-hdos 'B: SYSGEN   ABS : DDT      COM : X        COM' \
+run_test cpm-on-hdos 'B: SYSGEN   ABS : DDT      COM : DATE     COM : DRIVES   COM' \
     --disk1 "$WORK/cpm-on-hdos-1.h8d" -- \
     --step 'A>|DIR B:\r' --step 'Select|x' \
     --step 'A>|DIR B:\r' \
@@ -245,6 +245,90 @@ put=
 cp "$H37HDOS" "$WORK/h37hdos.h37"
 run_test h37h-hdos 'B: H37IMGR  ABS' --dk1 "$WORK/h37hdos.h37" -- \
     --step 'A>|DIR B:\r' --step 'Select|x' --step 'A>|DIR B:\r'
+
+# ---- Phase 7: SYSGEN, DRIVES, DATE, FORMAT ----
+FILL="python3 $V2/tests/fill.py"
+# host_check NAME COMMAND... - a check on the host, counted like a test.
+host_check() {
+    name=$1
+    shift
+    if "$@" >/dev/null; then
+        echo "PASS $name"; pass=$((pass + 1))
+    else
+        echo "FAIL $name"; fail=$((fail + 1))
+    fi
+}
+real_hdos() {     # real_hdos NAME EXPECT SYSDISK DISK [h37] -- steps
+    name=$1 expect=$2 sys=$3 other=$4 kind=$5
+    shift 6
+    cp "$sys" "$WORK/$name-sys.$kind"
+    if [ "$kind" = h37 ]; then
+        args="--sw501 30 --dk0 $WORK/$name-sys.h37 --dk1 $other"
+    else
+        args="--disk0 $WORK/$name-sys.h8d --disk1 $other"
+    fi
+    if "$H89RUN" $args --seconds 200 --step 'H: |B\r' --step 'ACTION?|\r' \
+            --step ')?|14-Oct-86\r' "$@" --expect "$expect" \
+            >"$WORK/$name.screen" 2>&1; then
+        echo "PASS $name"; pass=$((pass + 1))
+    else
+        echo "FAIL $name (screen in build/test/$name.screen)"; fail=$((fail + 1))
+    fi
+}
+disk=hcos.h8d
+cp "$V2/build/cpm.h8d" "$WORK/sysgen-b.h8d"
+run_test sysgen 'HCOS put on B:' --disk1 "$WORK/sysgen-b.h8d" -- \
+    --step 'A>|SYSGEN B:\r'
+cp "$WORK/sysgen-b.h8d" "$WORK/sysgen-boot.h8d"
+if "$H89RUN" --disk0 "$WORK/sysgen-boot.h8d" --seconds 60 --step 'H: |B\r' \
+        --step 'A>|STAT\r' --expect 'A: R/W, Space:' >"$WORK/sysgen-boot.screen" 2>&1; then
+    echo "PASS sysgen-boot"; pass=$((pass + 1))
+else
+    echo "FAIL sysgen-boot (screen in build/test/sysgen-boot.screen)"; fail=$((fail + 1))
+fi
+cp "$V2/build/hdos.h8d" "$WORK/drives-c.h8d"
+cp "$V2/build/cpm.h8d" "$WORK/drives-b.h8d"
+run_test drives 'C: H17 2  HDOS  HDOS 2.0 Issue' --disk1 "$WORK/drives-b.h8d" \
+    --disk2 "$WORK/drives-c.h8d" -- --step 'A>|DRIVES\r'
+run_test drives-empty 'B: H17 1  not ready' -- --step 'A>|DRIVES\r'
+put="$V2/build/hdosprog/PIP.ABS"
+cp "$V2/build/hdos.h8d" "$WORK/hdos-b.h8d"
+run_test date 'Flags   17-Oct-86' --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|DATE 17-oct-86\r' --step 'A>|DATE\r' \
+    --step 'A>|HDOS PIP\r' --step ':P:|SY1:/L\r'
+put=
+# FORMAT, CP/M: a blank disk becomes all E5H (an empty directory).
+$FILL --blank "$V2/build/cpm.h8d" "$WORK/fmt17.h8d"
+run_test format17 'NO FILE' --disk1 "$WORK/fmt17.h8d" -- \
+    --step 'A>|FORMAT B:\r' --step '(Y/N) |Y' --step 'A>|DIR B:\r'
+host_check format17-image $FILL "$WORK/fmt17.h8d"
+# FORMAT, HDOS: real HDOS mounts it, as INIT made it, and uses it.
+$FILL --blank "$V2/build/cpm.h8d" "$WORK/fmt17h.h8d"
+run_test format17-hdos 'Formatted.' --disk1 "$WORK/fmt17h.h8d" -- \
+    --step 'A>|FORMAT B: HDOS\r' --step '(Y/N) |Y'
+real_hdos format17-hdos-real '1 Files, Using 11 Sectors (356 Free)' \
+    "$V2/build/hdos.h8d" "$WORK/fmt17h.h8d" h8d -- \
+    --step '>|MOUNT SY1:\r' --step '>|PIP SY1:X.ABS=SY0:PATCH.ABS\r' \
+    --step '>|CAT SY1:\r'
+# The H37 (booted from the H17).
+disk=hcos37.h8d
+$FILL --blank "$C37" "$WORK/fmt37.h37"
+run_test format37 'NO FILE' --dk0 "$WORK/fmt37.h37" -- \
+    --step 'A>|FORMAT D:\r' --step '(Y/N) |Y' --step 'A>|DIR D:\r'
+host_check format37-image $FILL "$WORK/fmt37.h37" E5 0
+$FILL --blank "$C37" "$WORK/fmt37h.h37"
+run_test format37-hdos 'Formatted.' --dk0 "$WORK/fmt37h.h37" -- \
+    --step 'A>|FORMAT D: HDOS\r' --step '(Y/N) |Y'
+real_hdos format37-hdos-real '1 Files, Using 12 Sectors (356 Free)' \
+    "$H37HDOS" "$WORK/fmt37h.h37" h37 -- \
+    --step '>|MOUNT SY1:\r' --step '>|PIP SY1:X.ABS=SY0:SET.ABS\r' \
+    --step '>|CAT SY1:\r'
+# The H17 as D: in the build booted from the H37.
+disk=hcos37.h37
+$FILL --blank "$V2/build/cpm.h8d" "$WORK/fmt17d.h8d"
+run_test format17-d 'NO FILE' --disk0 "$WORK/fmt17d.h8d" -- \
+    --step 'A>|FORMAT D:\r' --step '(Y/N) |Y' --step 'A>|DIR D:\r'
+host_check format17-d-image $FILL "$WORK/fmt17d.h8d"
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

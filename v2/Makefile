@@ -36,6 +36,19 @@ $(BASE37):
 	cp $(H89DIR)/disks/CPM-2-2-03-64K-H17-H37-BOOT_00A3A2A6.H37 $@
 	$(H8DTOOL) rm $@ MOVCPM17.COM MOVCPM37.COM CONFIGUR.COM PIE.COM >/dev/null
 
+# HCOS's utilities (src/util/), the same on every build: they find the
+# BIOS from 0001H. They replace Heath's FORMAT, SYSGEN and DUP (which call
+# into Heath's BIOS) on the HCOS disks. (Heath's BIOS.SYS stays: it is
+# read-only, and hidden.
+UTILS = $(patsubst src/util/%.asm,$(B)/util/%.com,$(filter-out \
+	src/util/format.asm,$(wildcard src/util/*.asm)))
+HEATHONLY = FORMAT.COM SYSGEN.COM DUP.COM
+$(B)/util/%.cim: src/util/%.asm src/util/util.inc $(INC) | $(ZMAC)
+	@mkdir -p $(@D)
+	$(ZMAC) $(ZFLAGS) -I src/util --oo cim,lst -o $@ -o $(@:.cim=.lst) $<
+$(B)/util/%.com: $(B)/util/%.cim
+	cp $< $@
+
 # CP/M test programs (tests/cpm/*.asm), run by tests/cpmdiff.sh.
 PROGS = $(patsubst tests/prog/%.asm,$(B)/prog/%.com,$(wildcard tests/prog/*.asm))
 HDOSTESTS = $(patsubst tests/hdos/%.asm,$(B)/hdos/%.abs,$(wildcard tests/hdos/*.asm)) \
@@ -106,6 +119,15 @@ $(B)/$(1)/H37.COM: $(B)/$(1)/bios/h37com.cim
 	cp $$< $$@
 $(B)/$(1)/H17.COM: $(B)/$(1)/bios/h17com.cim
 	cp $$< $$@
+# FORMAT.COM is built for each build: it uses the drivers' code and the
+# BIOS's variables (src/util/format.asm).
+$(B)/$(1)/util/format.cim: src/util/format.asm src/util/util.inc \
+		src/bios/h17.asm src/bios/h37.asm src/bios/biosram.inc
+	@mkdir -p $$(@D)
+	$(ZMAC) $(ZFLAGS) -I $(B)/$(1) -I src/util -I src/bios \
+	    --oo cim,lst -o $$@ -o $$(@:.cim=.lst) $$<
+$(B)/$(1)/FORMAT.COM: $(B)/$(1)/util/format.cim
+	cp $$< $$@
 
 $(1).PARTS = $(B)/$(1)/boot/h17boot.cim $(B)/$(1)/boot/h37boot.cim \
 	$(B)/$(1)/bdos/bdos.cim $(B)/$(1)/bios/bios.cim
@@ -113,34 +135,40 @@ endef
 $(foreach t,$(TARGETS),$(eval $(call target,$(t))))
 
 # hcosdisk OUT TARGET SHELL [BASE BOOT] - a Heath CP/M disk with HCOS in
-# its reserved tracks (an H17 disk unless BASE and BOOT say otherwise).
+# its reserved tracks (an H17 disk unless BASE and BOOT say otherwise),
+# HCOS's utilities in place of Heath's, and the build's HDOS.COM and
+# HDOSFS.COM.
 define hcosdisk
 	python3 tools/mksys.py $(or $(4),$(BASE17)) $(1) --base $(BASE.$(2)) \
 	    --boot $(B)/$(2)/boot/$(or $(5),h17boot).cim --shell $(3) \
 	    --bdos $(B)/$(2)/bdos/bdos.cim --bios $(B)/$(2)/bios/bios.cim
+	$(H8DTOOL) rm $(1) $(HEATHONLY) >/dev/null 2>&1 || true
+	$(H8DTOOL) put $(1) $(B)/$(2)/HDOSFS.COM $(B)/$(2)/HDOS.COM \
+	    $(B)/$(2)/FORMAT.COM $(UTILS) >/dev/null
 endef
 
 # build/hcos.h8d: the H17 build, with HDOS.COM and HDOSFS.COM.
 # build/test17.h8d: the same with the test shell, for the BIOS tests.
 # build/hcos37.h8d: the H17/H37 build, on an H17 disk, booted from it.
 $(B)/hcos.h8d: $(h17.PARTS) $(B)/h17/shell/shell.cim tools/mksys.py \
-		$(BASE17) $(B)/h17/HDOSFS.COM $(B)/h17/HDOS.COM
+		$(BASE17) $(B)/h17/HDOSFS.COM $(B)/h17/HDOS.COM $(UTILS) \
+		$(B)/h17/FORMAT.COM
 	$(call hcosdisk,$@,h17,$(B)/h17/shell/shell.cim)
-	$(H8DTOOL) put $@ $(B)/h17/HDOSFS.COM $(B)/h17/HDOS.COM >/dev/null
 $(B)/test17.h8d: $(h17.PARTS) $(B)/h17/shell/tshell.cim tools/mksys.py \
-		$(BASE17)
+		$(BASE17) $(B)/h17/HDOSFS.COM $(B)/h17/HDOS.COM $(UTILS) \
+		$(B)/h17/FORMAT.COM
 	$(call hcosdisk,$@,h17,$(B)/h17/shell/tshell.cim)
 $(B)/hcos37.h8d: $(h37.PARTS) $(B)/h37/shell/shell.cim tools/mksys.py \
-		$(BASE17) $(B)/h37/HDOSFS.COM $(B)/h37/HDOS.COM $(B)/h37/H37.COM
+		$(BASE17) $(B)/h37/HDOSFS.COM $(B)/h37/HDOS.COM $(B)/h37/H37.COM \
+		$(UTILS) $(B)/h37/FORMAT.COM
 	$(call hcosdisk,$@,h37,$(B)/h37/shell/shell.cim)
-	$(H8DTOOL) put $@ $(B)/h37/HDOSFS.COM $(B)/h37/HDOS.COM \
-	    $(B)/h37/H37.COM >/dev/null
+	$(H8DTOOL) put $@ $(B)/h37/H37.COM >/dev/null
 # build/hcos37.h37: the H17/H37 build on an H37 disk, booted from the H37.
 $(B)/hcos37.h37: $(h37h.PARTS) $(B)/h37h/shell/shell.cim tools/mksys.py \
-		$(BASE37) $(B)/h37h/HDOSFS.COM $(B)/h37h/HDOS.COM $(B)/h37h/H17.COM
+		$(BASE37) $(B)/h37h/HDOSFS.COM $(B)/h37h/HDOS.COM $(B)/h37h/H17.COM \
+		$(UTILS) $(B)/h37h/FORMAT.COM
 	$(call hcosdisk,$@,h37h,$(B)/h37h/shell/shell.cim,$(BASE37),h37boot)
-	$(H8DTOOL) put $@ $(B)/h37h/HDOSFS.COM $(B)/h37h/HDOS.COM \
-	    $(B)/h37h/H17.COM >/dev/null
+	$(H8DTOOL) put $@ $(B)/h37h/H17.COM >/dev/null
 
 # Programs the tests run (tests/prog/*.asm).
 $(B)/prog/%.cim: tests/prog/%.asm $(INC) | $(ZMAC)

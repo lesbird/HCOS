@@ -32,6 +32,13 @@ HDATE	equ	S.DATC			; date for new HDOS files
 	org	TPA
 	jmp	start
 
+; The date HDOS programs see (S.DATE, S.DATC) and new HDOS files get:
+; DATE.COM changes it here, in the file. 'HCDT', then 'dd-Mmm-yy', then
+; the coded date (yyyyyyy mmmm ddddd, years from 1970).
+	db	'HCDT'
+sdate:	db	'01-Jan-80'
+sdatc:	dw	((80-70) << 9) + (1 << 5) + 1
+
 	include	scall.asm
 	include	console.asm
 	include	files.asm

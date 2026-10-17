@@ -36,10 +36,15 @@ if [ $# -eq 0 ]; then
     set -- $(cd "$V2/tests/cpm" && ls *.asm *.steps | sed 's/\.[a-z]*$//')
 fi
 
-# The HCOS disk carries HDOSFS.COM and HDOS.COM: give the CP/M disk the
-# same files, so both directories are alike.
+# The HCOS disk carries HDOSFS.COM, HDOS.COM and HCOS's utilities in
+# place of Heath's FORMAT, SYSGEN and DUP: give the CP/M disk
+# the same files, so both directories are alike.
 samefiles() {
-    [ "$1" = cpm ] && "$H8DTOOL" put "$2" "$B/h17/HDOSFS.COM" "$B/h17/HDOS.COM" >/dev/null
+    if [ "$1" = cpm ]; then
+        "$H8DTOOL" rm "$2" FORMAT.COM SYSGEN.COM DUP.COM >/dev/null 2>&1
+        "$H8DTOOL" put "$2" "$B/h17/HDOSFS.COM" "$B/h17/HDOS.COM" \
+            "$B/h17/FORMAT.COM" "$B"/util/*.com >/dev/null
+    fi
     return 0
 }
 

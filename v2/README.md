@@ -6,7 +6,7 @@ or Heath CP/M code, and runs CP/M and HDOS programs natively: each kind
 gets the memory map its own operating system gives it. CP/M programs get
 Heath CP/M's 56K TPA.
 
-Status: **phase 6 done**. HCOS v2 boots from an H17 or H37 disk with its
+Status: **phase 7 done**. HCOS v2 boots from an H17 or H37 disk with its
 own boot record, BIOS, BDOS and shell, to an `A>` prompt 3.2 s after reset
 from the H17 (Heath CP/M: 5.7 s). CP/M programs get Heath CP/M's 56K (54K
 in the builds with an H37, whose driver is loaded at cold boot), and Heath's own
@@ -50,6 +50,17 @@ make test    # boot them in the emulator and check them
 
 then `B` at the `H:` prompt. Each is a Heath CP/M disk (H17, or Heath's
 H17/H37 disk) with HCOS in its reserved tracks.
+
+HCOS's own programs on those disks (`src/util/`):
+
+| Command | Does |
+|---|---|
+| `FORMAT d:` | formats the disk in d: for CP/M (H17 or H37, single-sided, single density) |
+| `FORMAT d: HDOS` | makes it an HDOS 2.0 data disk, as HDOS INIT would |
+| `SYSGEN d:` | puts HCOS on d: (a disk on the same controller as A:) |
+| `DATE [dd-Mmm-yy]` | shows or sets the date HDOS programs and new HDOS files get |
+| `DRIVES` | lists each drive's controller and what's in it |
+| `H37` / `H17` | loads the second controller's driver (run by itself at cold boot) |
 
 `make test` runs:
 - `tests/run.sh`: the BIOS on `build/test17.h8d`, whose test shell has
