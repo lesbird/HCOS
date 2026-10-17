@@ -2,7 +2,7 @@
 ;
 ;	A>HDOS [/T] [/R] PROG [args]
 ;
-; /T traces every SCALL on the console: [fff A=ooo], in octal.
+; /T traces every SCALL on the console: its number, in octal.
 ; /R runs the program in H-mode, with the monitor ROM in at 0000H.
 ;
 ; Loads PROG.ABS at the address in its header, builds the HDOS system

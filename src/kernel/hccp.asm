@@ -15,8 +15,6 @@
 	include	cpm.inc
 	include	hcos.inc
 
-CCPB	equ	0DA00h		; where the BIOS enters it
-BDOSB	equ	0E200h
 FCB2	equ	DFCB+16
 IOCDISK	equ	0004h		; user << 4 + drive
 

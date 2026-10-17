@@ -16,7 +16,7 @@ KX	equ	1			; (the kernel extension)
 
 	org	KXBASE
 
-	jmp	0E206h			; BDOS entry (0005H comes here)
+	jmp	BDOSB+6			; BDOS entry (0005H comes here)
 	db	'HCKX'			; signature
 	jmp	kxhook
 	jmp	kxreset

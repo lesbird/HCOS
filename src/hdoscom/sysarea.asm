@@ -254,29 +254,15 @@ sjlen	equ	$-sjtab
 	mvi	a,4
 	jmp	sjump
 	mvi	a,5
-sjump:	lxi	sp,hcstk
-	add	a			; DE -> name
-	add	a
-	add	a
-	mov	e,a
-	mvi	d,0
-	lxi	h,sjnam
-	dad	d
-	push	h
+sjump:	lxi	sp,hcstk		; "no S.JUMPS n" (0 S.SDD, 1 S.FASER,
+	push	psw			; 2 S.DIREA, 3 S.FCI, 4 S.SCI)
 	lxi	d,msjump
 	mvi	c,C_WRITESTR
 	call	BDOS
-	pop	d
-	mvi	c,C_WRITESTR
-	call	BDOS
+	pop	psw
+	call	phexo
 	jmp	hexit
-msjump:	db	0dh,0ah,'HDOS.COM: no $'
-sjnam:	db	'S.SDD',0dh,0ah,'$'
-	db	'S.FASER$'
-	db	'S.DIREA$'
-	db	'S.FCI',0dh,0ah,'$'
-	db	'S.SCI',0dh,0ah,'$'
-	db	'S.GUP',0dh,0ah,'$'
+msjump:	db	0dh,0ah,'HDOS.COM: no S.JUMPS $'
 
 ; Device table (DEVDEF): name, residence, JMP driver, flags, mounted
 ; unit mask, units, -> unit table, driver length and group. SY: and
@@ -304,6 +290,57 @@ devtab:	db	'SY',DR.IMPR,0C3h
 	dw	chrunt,0
 	db	0
 	db	0			; end
+; .GDA (HDOS 3.0) - DE = device name: HL -> its driver JMP, BC -> its
+; device table entry. CY, A = EC.UND and HL = BC = 0 if unknown.
+sgda:	lxi	h,devtab
+gda1:	mov	a,m
+	ora	a
+	jz	gda3
+	mov	b,h
+	mov	c,l
+	mov	a,m			; name (low byte first, as a word)
+	inx	h
+	cmp	e
+	jnz	gda2
+	mov	a,m
+	cmp	d
+	jnz	gda2
+	inx	h			; DEV.JMP
+	inx	h
+	xra	a
+	ret
+gda2:	lxi	h,DEVELEN
+	dad	b
+	jmp	gda1
+gda3:	mov	h,a
+	mov	l,a
+	mov	b,a
+	mov	c,a
+	mvi	a,EC.UND
+	stc
+	ret
+
+; phexo - print A as 3 octal digits through BDOS (for diagnostics).
+phexo:	push	psw
+	rlc
+	rlc
+	ani	3
+	call	phexo1
+	pop	psw
+	push	psw
+	rrc
+	rrc
+	rrc
+	ani	7
+	call	phexo1
+	pop	psw
+	ani	7
+phexo1:	adi	'0'
+	mov	e,a
+	mvi	c,C_WRITE
+	jmp	BDOS
+
+
 svrst1:	ds	3			; CP/M's page zero RST 1 and RST 7
 svrst7:	ds	3
 

@@ -35,6 +35,13 @@ mkdir -p "$OUT/tmp"
 "$H8DTOOL" put "$OUT/cpm.h8d" "$OUT/tmp/ERRORMSG.SYS" >/dev/null
 rm -rf "$OUT/tmp"
 
+# The H17/H37 Heath CP/M disk (booted from the H37), with room made,
+# and the H37 HDOS disk.
+cp "$H89_DISKS/CPM-2-2-03-64K-H17-H37-BOOT_00A3A2A6.H37" "$OUT/cpm37.h37"
+"$H8DTOOL" rm "$OUT/cpm37.h37" MOVCPM17.COM MOVCPM37.COM CONFIGUR.COM \
+    PIE.COM >/dev/null
+cp "$H89_DISKS/HDOS-2-H37IMGR-AND-H8DIMGR3_0096EA5B.H37" "$OUT/hdos37.h37"
+
 # Heath's HDOS programs, for running under HDOS.COM.
 mkdir -p "$OUT/hdosprog"
 "$H8DTOOL" get "$OUT/hdos.h8d" -d "$OUT/hdosprog" >/dev/null

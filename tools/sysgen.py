@@ -1,37 +1,34 @@
 #!/usr/bin/env python3
-"""Put HCOS into the system tracks of a Heath CP/M H17 disk image.
+"""Put HCOS into the system tracks of a Heath CP/M disk image.
 
-The Heath boot loader and BIOS load 44 records from the start of the
-disk to D980H: the boot record, the CCP at DA00H (offset 80H) and the
-BDOS at E200H (offset 880H), up to EF7FH. HCOS's command processor
-(HCCP) and BDOS go in their places, so every cold and warm boot loads
-them.
+The Heath boot loader and BIOS load 44 records from the system tracks:
+the CCP, then the BDOS 800H after it, up to 80H before the BIOS. HCOS's
+command processor (HCCP) and BDOS go in their places, so every cold and
+warm boot loads them. Works for H17 images (.h8d) and single-density
+H37 images (.h37, with their geometry trailer); the system track layout
+differs between them, so the CCP is found by DRI's copyright line.
 
-    sysgen.py IMAGE.h8d OUT.h8d --bdos BDOS.bin [--ccp HCCP.bin]
+    sysgen.py IMAGE OUT --base CCPB --bdos BDOS.bin [--ccp HCCP.bin]
 
-The DRI CCP checks the BDOS's 6-byte serial number, so it is copied
-from the BDOS being replaced (HCCP doesn't check it).
+--base is where the kernel was built to run (CCPB, e.g. DA00); it must
+match the CCP being replaced. The DRI CCP checks the BDOS's 6-byte
+serial number, so that is copied from the BDOS being replaced.
 """
 import argparse
 import sys
 
-LOAD = 0xD980
-CCP = 0xDA00
-BDOS = 0xE200
-END = 0xEF80
+CCPLEN = 0x800
+BDOSLEN = 0xD80              # BDOS up to 80H below the BIOS
 
 
-def put(disk, addr, end, path, what):
+def put(disk, off, room, path, what, serial=False):
     code = bytearray(open(path, 'rb').read())
-    room = end - addr
     if len(code) > room:
         sys.exit(f'{path}: {len(code)} bytes, room for {room}')
-    off = addr - LOAD
     size = len(code)
-    if what == 'BDOS':
-        code[0:6] = disk[off:off + 6]       # serial number
-    # Variables after the code are loaded too: start them at zero.
-    code += bytes(room - len(code))
+    if serial:
+        code[0:6] = disk[off:off + 6]
+    code += bytes(room - len(code))    # variables after the code: zero
     disk[off:off + room] = code
     print(f'{what}: {size} of {room} bytes')
 
@@ -40,21 +37,31 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('image')
     ap.add_argument('out')
+    ap.add_argument('--base', required=True, type=lambda x: int(x, 16))
     ap.add_argument('--bdos', required=True)
     ap.add_argument('--ccp')
     a = ap.parse_args()
     disk = bytearray(open(a.image, 'rb').read())
-    if len(disk) != 102400:
-        sys.exit(f'{a.image}: not a 100K H17 image')
-    if disk[CCP - LOAD] != 0xC3 or disk[CCP - LOAD + 3] != 0xC3:
-        sys.exit(f'{a.image}: no CCP at offset {CCP - LOAD:X}H')
-    if disk[BDOS - LOAD + 6] != 0xC3:
-        sys.exit(f'{a.image}: no BDOS at offset {BDOS - LOAD:X}H')
-    put(disk, BDOS, END, a.bdos, 'BDOS')
+    if len(disk) < 102400:
+        sys.exit(f'{a.image}: not a 100K H17 or H37 image')
+    i = disk.find(b'COPYRIGHT (C) 1979, DIGITAL RESEARCH')
+    if i < 0:
+        sys.exit(f'{a.image}: no CP/M CCP in the system tracks')
+    ccp = i - 0x18
+    if disk[ccp] != 0xC3:
+        sys.exit(f'{a.image}: no CCP entry at offset {ccp:X}H')
+    base = (disk[ccp + 1] | disk[ccp + 2] << 8) - 0x35C
+    if base != a.base:
+        sys.exit(f'{a.image}: its CCP is at {base:04X}H, the kernel was '
+                 f'built for {a.base:04X}H')
+    bdos = ccp + CCPLEN
+    if disk[bdos + 6] != 0xC3:
+        sys.exit(f'{a.image}: no BDOS at offset {bdos:X}H')
+    put(disk, bdos, BDOSLEN, a.bdos, 'BDOS', serial=True)
     if a.ccp:
-        put(disk, CCP, BDOS, a.ccp, 'HCCP')
+        put(disk, ccp, CCPLEN, a.ccp, 'HCCP')
     open(a.out, 'wb').write(disk)
-    print(f'{a.out}: HCOS installed')
+    print(f'{a.out}: HCOS installed (CCP at {base:04X}H)')
 
 
 if __name__ == '__main__':

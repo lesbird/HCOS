@@ -3,8 +3,9 @@
 **HCOS** (HDOS CP/M Operating System): an operating system for the Heathkit H8 and H89 that runs both
 **HDOS** (`.ABS`) and **CP/M 2.2** (`.COM`) programs, written in 8080 assembly.
 
-- Status: **Draft 0.6**, 2026-10-16. Phases 1-5 are done: HDOS.COM (with
-  H-mode), and the kernel (BDOS, HCCP, HCOS.SYS) booting from disk; see
+- Status: **Draft 0.7**, 2026-10-16. Phases 1-6 are done: HDOS.COM (with
+  H-mode), and the kernel (BDOS, HCCP, HCOS.SYS) booting from H17 and H37
+  disks; see
   [HDOSCOM.md](HDOSCOM.md) and [KERNEL.md](KERNEL.md).
 - Background: [research-notes.txt](research-notes.txt)
 
@@ -478,7 +479,7 @@ be changed in `HCOS.CFG`.
 | 3 | **Done** (see [KERNEL.md](KERNEL.md)). HCOS boots from disk on its own CP/M 2.2 BDOS, installed in the system tracks; drivers are the Heath BIOS. CP/M's own tools and all HDOS.COM tests pass on it | replaces CP/M |
 | 4 | **Done** (see [KERNEL.md](KERNEL.md)). HCCP command processor (CP/M CCP compatible, runs `.ABS` through HDOS.COM); kernel extension HCOS.SYS with the HDOS file system, through which CP/M programs use HDOS disks (KFB). The SCALL personality stays a transient (HDOS.COM), loaded for `.ABS` programs, to keep the CP/M TPA large | dual personality |
 | 5 | **Done.** H-mode: `HDOS /R` or `ROMPROG` lines in `HCOS.CFG`; switching code in HDOS's AIO area runs SCALLs in C-mode and the program with the ROM in (see [HDOSCOM.md](HDOSCOM.md)) | ROM-dependent programs |
-| 6 | H37 driver, HDOS 3.0 SCALLs, `.LOADO` overlays | broader compatibility |
+| 6 | **Done.** H37: the kernel builds for the H17/H37 Heath CP/M too (BIOS at E800H) and boots from the H37; HDOS disks in H37 drives (drives are selected as new only once, as the H37 BIOS needs). HDOS 3.0 `.GDA` and `.CRC16`; `.LOADO` (since 1b). Drivers stay the Heath BIOS's | broader compatibility |
 | 7 | (optional) `.DVD` loadable driver support | full HDOS parity |
 
 **References found so far:** HDOS 3.0 source and include decks, with

@@ -867,6 +867,8 @@ ksize:	call	kfname
 ; kxreset - at every boot: forget what is known about the disks and
 ; close every slot.
 kxreset: call	uinit
+	xra	a			; drives are new to the BIOS again
+	sta	rsseen
 	lxi	h,kslots
 	lxi	b,NKSLOT*CHLEN
 	call	zfill

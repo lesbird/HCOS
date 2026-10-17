@@ -34,44 +34,61 @@ ddrv.x:	mvi	a,EC.DDA
 	ret
 
 
-; sctrace - print "[fff A=ooo]" (octal) for the SCALL being made.
+; sctrace - print " fff" (octal) for the SCALL being made.
 sctrace: push	b
 	push	d
-	mvi	e,'['
+	mvi	e,' '
 	mvi	c,C_WRITE
 	call	BDOS
 	lda	scfn
 	call	phexo
-	lxi	d,mtra
-	mvi	c,C_WRITESTR
-	call	BDOS
-	lda	sca
-	call	phexo
-	mvi	e,']'
-	mvi	c,C_WRITE
-	call	BDOS
 	pop	d
 	pop	b
 	ret
-mtra:	db	' A=$'
 
-; phexo - print A as 3 octal digits through BDOS (for diagnostics).
-phexo:	push	psw
-	rlc
-	rlc
-	ani	3
-	call	phexo1
-	pop	psw
+; .CRC16 (HDOS 3.0) - CRC-16 of BC bytes at HL starting from DE. Exit
+; HL past them, DE = the CRC, BC = 0. (HDOS 3.0's algorithm.)
+scrc16:	xchg
+crc1:	ldax	d
+	push	b
+	mvi	b,8
+crc2:	rlc
+	mov	c,a
+	dad	h
+	mov	a,h
+	ral
+	xra	c
+	rrc
+	jnc	crc3
+	mvi	a,80h
+	xra	h
+	mov	h,a
+	mvi	a,05h
+	xra	l
+	mov	l,a
+crc3:	mov	a,c
+	dcr	b
+	jnz	crc2
+	pop	b
+	inx	d
+	dcx	b
+	mov	a,b
+	ora	c
+	jnz	crc1
+	xchg
+	ret
+
+; rsbit - drive C: HL -> rsseen, B = its bit. Keeps C.
+rsbit:	lxi	h,rsseen
+	mvi	b,1
+	mov	a,c
+rsb1:	ora	a
+	rz
 	push	psw
-	rrc
-	rrc
-	rrc
-	ani	7
-	call	phexo1
+	mov	a,b
+	add	a
+	mov	b,a
 	pop	psw
-	ani	7
-phexo1:	adi	'0'
-	mov	e,a
-	mvi	c,C_WRITE
-	jmp	BDOS
+	dcr	a
+	jmp	rsb1
 

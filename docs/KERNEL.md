@@ -12,10 +12,24 @@ and contain no DRI code:
 | **HDOS.COM**: HDOS personality (SCALLs), loaded when an `.ABS` runs | file | 1-2b |
 
 ```sh
-make hcos      # build/disks/hcos.h8d: the test CP/M disk, booting HCOS
-python3 tools/sysgen.py YOUR.h8d OUT.h8d --bdos build/kernel/bdos.cim \
-    --ccp build/kernel/hccp.cim      # then copy HCOS.SYS and HDOS.COM on
+make hcos      # build/disks/hcos.h8d (H17) and hcos37.h37 (H17/H37)
+python3 tools/sysgen.py YOUR.h8d OUT.h8d --base DA00 \
+    --bdos build/kernel/h17/bdos.cim --ccp build/kernel/h17/hccp.cim
+               # then copy HCOS.SYS and HDOS.COM on
 ```
+
+**Targets.** Every address follows from the BIOS base in the build's
+`target.inc` (`src/inc/hcos.inc`):
+
+| Target | Heath CP/M | BIOS | BDOS | HCCP | HCOS.SYS |
+|---|---|---|---|---|---|
+| h17 | 64K for the H17 | F000H | E200H | DA00H | C300H |
+| h37 | 64K for the H17 and H37 | E800H | DA00H | D200H | BB00H |
+
+`sysgen.py` finds the CCP in the system tracks by DRI's copyright line.
+The two disk layouts differ (offset 80H on H17 disks, 100H on H37 disks).
+It checks that the CCP's address matches `--base`. It takes `.h8d` and
+single-density `.h37` images.
 
 On an HCOS disk:
 

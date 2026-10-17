@@ -1,5 +1,5 @@
 # HCOS build. `make tools` once, then `make test`. `make hcos` makes
-# build/disks/hcos.h8d, a Heath CP/M disk that boots HCOS.
+# build/disks/hcos.h8d (H17) and hcos37.h37 (H37): disks that boot HCOS.
 # The emulator tests need a built H89 checkout (see tests/h89env.sh).
 
 ZMAC   = tools/zmac/src/zmac
@@ -8,7 +8,7 @@ ZFLAGS = -8 -I src/inc
 B      = build
 INC    = $(wildcard src/inc/*.inc)
 
-SMOKE  = $(B)/smoke/cpmhi.com $(B)/smoke/hdoshi.abs
+SMOKE  = $(B)/smoke/cpmhi.com $(B)/smoke/hdoshi.abs $(B)/smoke/hdos30.abs
 HDOSTESTS = $(patsubst tests/hdos/%.asm,$(B)/hdos/%.abs,$(wildcard tests/hdos/*.asm))
 CPMTESTS = $(patsubst tests/cpm/%.asm,$(B)/cpm/%.com,$(wildcard tests/cpm/*.asm))
 HDOSCOM = $(B)/hdos.com
@@ -38,19 +38,38 @@ $(B)/cpm/%.cim: tests/cpm/%.asm $(INC) tests/cpm/test.inc | $(ZMAC)
 $(B)/hdos/%.cim: tests/hdos/%.asm $(INC) tests/hdos/test.inc | $(ZMAC)
 	$(assemble)
 
-# The HCOS kernel: BDOS and HCCP in the system tracks, and a boot disk
-# with them.
-$(B)/kernel/%.cim: src/kernel/%.asm $(wildcard src/kernel/*.asm src/hdoscom/*.asm) $(INC) | $(ZMAC)
-	@mkdir -p $(@D)
-	$(ZMAC) $(ZFLAGS) -I src/kernel -I src/hdoscom --oo cim,lst -o $@ -o $(@:.cim=.lst) $<
+# The HCOS kernel: BDOS and HCCP in the system tracks, HCOS.SYS, and
+# boot disks with them. Two targets: h17 (Heath CP/M for the H17, BIOS
+# at F000H) and h37 (Heath CP/M for the H17 and H37, BIOS at E800H).
+KSRC = $(wildcard src/kernel/*.asm src/hdoscom/*.asm) $(INC)
 
-KERNEL = $(B)/kernel/bdos.cim $(B)/kernel/hccp.cim $(B)/kernel/kext.cim
+$(B)/kernel/h17/target.inc:
+	@mkdir -p $(@D)
+	echo 'BIOSB	equ	0F000h' >$@
+$(B)/kernel/h37/target.inc:
+	@mkdir -p $(@D)
+	echo 'BIOSB	equ	0E800h' >$@
+
+$(B)/kernel/%.cim: $(KSRC) | $(ZMAC)
+	$(MAKE) $(@D)/target.inc
+	$(ZMAC) $(ZFLAGS) -I $(@D) -I src/kernel -I src/hdoscom --oo cim,lst \
+	    -o $@ -o $(@:.cim=.lst) src/kernel/$(basename $(@F)).asm
+
+KERNEL = $(foreach t,h17 h37,$(B)/kernel/$(t)/bdos.cim \
+	    $(B)/kernel/$(t)/hccp.cim $(B)/kernel/$(t)/kext.cim)
+
+# hcosdisk BASE OUT TARGET CCPB
+define hcosdisk
+	python3 tools/sysgen.py $(1) $(2) --base $(4) \
+	    --bdos $(B)/kernel/$(3)/bdos.cim --ccp $(B)/kernel/$(3)/hccp.cim
+	cp $(B)/kernel/$(3)/kext.cim $(B)/kernel/$(3)/HCOS.SYS
+	$(H89DIR)/build/h8dtool put $(2) $(B)/kernel/$(3)/HCOS.SYS >/dev/null
+endef
 
 $(B)/disks/hcos.h8d: $(B)/disks/hdos.h8d $(KERNEL) tools/sysgen.py
-	python3 tools/sysgen.py $(B)/disks/cpm.h8d $@ \
-	    --bdos $(B)/kernel/bdos.cim --ccp $(B)/kernel/hccp.cim
-	cp $(B)/kernel/kext.cim $(B)/kernel/HCOS.SYS
-	$(H89DIR)/build/h8dtool put $@ $(B)/kernel/HCOS.SYS >/dev/null
+	$(call hcosdisk,$(B)/disks/cpm.h8d,$@,h17,DA00)
+$(B)/disks/hcos37.h37: $(B)/disks/hdos.h8d $(KERNEL) tools/sysgen.py
+	$(call hcosdisk,$(B)/disks/cpm37.h37,$@,h37,D200)
 
 $(B)/hdos.cim: src/hdoscom/hdos.asm $(wildcard src/hdoscom/*.asm) $(INC) | $(ZMAC)
 	$(assemble)
@@ -76,12 +95,12 @@ test-cpm: all disks
 	tests/run.sh
 	tests/difftest.sh
 
-test-hcos: all disks $(B)/disks/hcos.h8d
+test-hcos: all disks $(B)/disks/hcos.h8d $(B)/disks/hcos37.h37
 	tests/cpmdiff.sh
 	CPMDISK=hcos tests/run.sh
 	CPMDISK=hcos tests/difftest.sh
 
-hcos: $(B)/disks/hcos.h8d
+hcos: $(B)/disks/hcos.h8d $(B)/disks/hcos37.h37
 
 clean:
 	rm -rf $(B)

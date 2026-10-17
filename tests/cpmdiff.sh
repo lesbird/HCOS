@@ -32,7 +32,7 @@ fi
 # samefiles OS DISK - the HCOS disk has HCOS.SYS on it: give the CP/M
 # disk the same file, so both directories are alike.
 samefiles() {
-    [ "$1" = cpm ] && "$H8DTOOL" put "$2" "$B/kernel/HCOS.SYS" >/dev/null
+    [ "$1" = cpm ] && "$H8DTOOL" put "$2" "$B/kernel/h17/HCOS.SYS" >/dev/null
     return 0
 }
 

@@ -39,10 +39,17 @@ rs0:	sta	rswr
 	add	a
 	inr	a
 	sta	rssec			; first BIOS sector
-	lda	rsdrv			; select the drive
-	mov	c,a
+	lda	rsdrv			; select the drive: E = 0 only the
+	mov	c,a			; first time, as the BDOS does (the
+	call	rsbit			; H37 BIOS logs a drive in again on
+	mov	a,m			; every E = 0)
+	ora	b
+	cmp	m			; (Z: selected before)
+	mov	m,a
 	mvi	e,0
-	mvi	a,B.SELDSK
+	jnz	rs1
+	inr	e
+rs1:	mvi	a,B.SELDSK
 	call	bcall
 	mov	a,h
 	ora	l
@@ -134,3 +141,4 @@ rsdma:	dw	0
 rstrk:	dw	0
 rssec:	db	0
 rswr:	db	0			; 0 read, 1 write
+rsseen:	db	0			; drives selected already (bit n)

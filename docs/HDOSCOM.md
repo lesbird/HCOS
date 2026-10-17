@@ -124,6 +124,19 @@ Checked in the H89 emulator on Heath CP/M 2.2.03:
   them at the same addresses. Its assembled bytes are identical to the 444-19
   ROM over that range.
 
+## HDOS 3.0 calls and the H37 (phase 6)
+
+- **`.GDA`** returns a device's driver and table addresses, from
+  HDOS.COM's device table.
+- **`.CRC16`** is HDOS 3.0's CRC-16 (polynomial 8005H), copied bit for
+  bit. "123456789" gives FEE8H.
+- **`.VERS`** still says 2.0, which is what 2.0 programs check for.
+- **H37 drives** look like H17 drives to the Heath BIOS (20 records a
+  track), so HDOS disks in them are found and read the same way. The H37
+  BIOS logs a drive in again whenever it is selected with E = 0. `rdsec`
+  therefore uses E = 0 only the first time it selects a drive, as the BDOS
+  does; until that fix, reading a directory hung.
+
 ## H-mode (phase 5)
 
 For HDOS programs that call the monitor ROM (`.DLY` at 002BH, or the

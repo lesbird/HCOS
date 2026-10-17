@@ -18,28 +18,33 @@ pass=0 fail=0
 run_test() {
     name=$1 os=${2%%+*} expect=$3
     [ "$os" = cpm ] && os=$CPMDISK
+    [ "$os" = cpm37 ] && os=${CPMDISK}37
+    ext=h8d drv0=--disk0 drv1=--disk1 boot=
+    case $os in *37)                    # H37 disks, booted from the H37
+        ext=h37 drv0=--dk0 drv1=--dk1 boot="--sw501 30" ;;
+    esac
     disk1=
-    if [ "$2" != "$os" ]; then
-        disk1=$WORK/$name-1.h8d
-        cp "$DISKS/${2#*+}.h8d" "$disk1"
+    if [ "$2" != "${2%%+*}" ]; then
+        disk1=$WORK/$name-1.$ext
+        cp "$DISKS/${2#*+}.$ext" "$disk1"
     fi
     shift 3
-    disk=$WORK/$name.h8d
+    disk=$WORK/$name.$ext
     case $os in
     hdos=*) cp "${os#hdos=}" "$disk"; os=hdos ;;
-    *) cp "$DISKS/$os.h8d" "$disk" ;;
+    *) cp "$DISKS/$os.$ext" "$disk" ;;
     esac
     while [ "$1" != "--" ]; do
         "$H8DTOOL" put "$disk" "$1" >/dev/null || { fail=$((fail + 1)); return; }
         shift
     done
     shift
-    if [ "$os" = hdos ]; then
+    if [ "$os" = hdos ] || [ "$os" = hdos37 ]; then
         set -- --step 'H: |B\r' --step 'ACTION?|\r' --step ')?|14-Oct-86\r' "$@"
     else
         set -- --step 'H: |B\r' "$@"
     fi
-    if "$H89RUN" --disk0 "$disk" ${disk1:+--disk1 "$disk1"} --seconds 300 \
+    if "$H89RUN" $boot $drv0 "$disk" ${disk1:+$drv1 "$disk1"} --seconds 300 \
             "$@" --expect "$expect" \
             >"$WORK/$name.screen" 2>&1; then
         echo "PASS $name"
@@ -90,6 +95,19 @@ run_test run-from-hdos cpm+hdos 'BASIC FROM SY1:' \
     "$B/hdos.com" -- \
     --step 'A>|HDOS SY1:BASIC\r' --step '\n*|PRINT "BASIC FROM SY1:"\r'
 
+# The H17/H37 CP/M (or HCOS) booted from the H37, with the H37 HDOS
+# disk (Z80 programs from a later HDOS 2 issue) in the second H37 drive.
+run_test h37-dir cpm37 'A: PIP      COM' -- --step 'A>|DIR\r'
+run_test h37-hdos-pip cpm37+hdos37 'H37IMGR .ABS    44' \
+    "$B/hdos.com" "$P/PIP.ABS" -- \
+    --step 'A>|HDOS PIP\r' --step ':P:|SY1:/L\r'
+run_test h37-hdos-prog cpm37+hdos37 'H89 PIE 1.5b Editor' \
+    "$B/hdos.com" -- --step 'A>|HDOS B:PIE\r'
+
+# HDOS 3.0 calls (real HDOS 2.0 doesn't have them).
+run_test hdos30 cpm 'CRC FEE8 GDA C=0 GDA C=1 A=0D HDOS 3.0 OK' \
+    "$B/hdos.com" "$B/smoke/hdos30.abs" -- --step 'A>|HDOS HDOS30\r'
+
 # H-mode chosen by HCOS.CFG ("ROMPROG NAME"), with no /R.
 printf 'ROMPROG ROMMODE\r\n\032' >"$WORK/HCOS.CFG"
 run_test romprog cpm 'ROM C3 00 04 21 DLY OK' \
@@ -118,6 +136,11 @@ if [ "$CPMDISK" = hcos ]; then
         --step 'A>|DIR B:\r'
     run_test hdos-reads-cpm "hdos=$WORK/cpm-on-hdos-1.h8d" 'DDT     .COM    19' -- \
         --step '>|CAT *.COM\r'
+    run_test h37-hcos cpm37+hdos37 'Enter File Name' \
+        "$B/hdos.com" -- \
+        --step 'A>|DIR B:\r' \
+        --step 'A>|PIP A:=B:LABEL.ABS[OV]\r' \
+        --step 'A>|B:SFLAGS\r'
 fi
 
 echo "$pass passed, $fail failed"

@@ -89,3 +89,18 @@ decode:	mvi	a,EC.IFN
 	stc
 	ret
 zdef	equ	0
+
+; rsbit - drive C: HL -> rsseen, B = its bit. Keeps C. (In HDOS.COM it
+; is in systab.asm.)
+rsbit:	lxi	h,rsseen
+	mvi	b,1
+	mov	a,c
+rsb1:	ora	a
+	rz
+	push	psw
+	mov	a,b
+	add	a
+	mov	b,a
+	pop	psw
+	dcr	a
+	jmp	rsb1

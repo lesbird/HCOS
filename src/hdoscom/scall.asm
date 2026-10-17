@@ -124,6 +124,7 @@ smount:	mvi	c,DRV_GET
 	call	BDOS
 	call	uinit
 	xra	a
+	sta	rsseen			; (and select them as new)
 	ret
 
 ; Not implemented yet: say so on the console once per function, then
@@ -160,8 +161,8 @@ scr:	dw	sexit			; .EXIT
 	dw	sclrco			; .CLRCO
 	dw	sloado			; .LOADO
 	dw	svers			; .VERS
-	dw	scill			; .GDA (3.0)
-	dw	scill			; .CRC16 (3.0)
+	dw	sgda			; .GDA (3.0)
+	dw	scrc16			; .CRC16 (3.0)
 
 ; Overlay 0 functions 040-062.
 sco:	dw	slink			; .LINK

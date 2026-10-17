@@ -15,9 +15,8 @@
 	include	cpm.inc
 	include	hcos.inc
 
-BDOSB	equ	0E200h		; base, as the BIOS and CCP expect
-LOADEND	equ	0EF80h		; end of what the boot loader loads
-BIOSB	equ	0F000h		; BIOS jump table
+; BDOSB (where the BIOS and CCP expect it), LOADEND (the end of what
+; the boot loader loads) and BIOSB come from hcos.inc.
 
 ; BIOS entries
 B.CONST	equ	BIOSB+6
