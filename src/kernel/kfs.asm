@@ -34,8 +34,14 @@ f24:	lhld	dlog
 f29:	lhld	rodsk
 	jmp	setretw
 f27:	lhld	alvp
-	jmp	setretw
+	jmp	f31a
 f31:	lhld	dpbp
+f31a:	shld	aret			; offered to the kernel extension:
+	lxi	d,aret			; for an HDOS disk it puts its own
+	lda	fnum			; in aret
+	mov	c,a
+	lda	curdsk
+	jmp	KXVEC
 setretw: shld	aret
 	ret
 

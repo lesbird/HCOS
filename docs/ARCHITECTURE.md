@@ -296,9 +296,8 @@ in the SCALL personality before the name reaches KAPI.
 ### Text files
 
 No translation is done by default. Text conversion (HDOS has no Ctrl-Z
-convention, CP/M does) is left to utilities. **Open question:** should
-reading an HDOS-disk file through BDOS return a synthetic Ctrl-Z at EOF
-when the file has a text extension?
+convention, CP/M does) is left to utilities. Reading an HDOS-disk file
+through the BDOS does not add a Ctrl-Z at the end (Q1, decided).
 
 ---
 
@@ -459,9 +458,9 @@ be changed in `HCOS.CFG`.
 | ~~V6~~ | HDOS directory, GRT, RGT and label format: **done**, `src/hdoscom/hdosfs.asm` | DIRDEF, DISDEF, LABDEF, HDOS 2.0 disk image |
 | ~~V7~~ | Channels: **done**, −1 to 5 (−1 = loaded program) | HDOS 3.0 listing, tests |
 | ~~V8~~ | Error codes: **done**, `src/inc/hdos.inc` | ECDEF |
-| V9 | CP/M DPBs for H17/H37 formats | Heath CP/M BIOS |
-| V10 | Console and clock port addresses | H8/H89 manuals |
-| Q1 | Synthetic Ctrl-Z for HDOS text files read via BDOS? | design decision |
+| ~~V9~~ | CP/M DPBs: **not needed**, HCOS uses the Heath BIOS's own. HDOS disks get a made-up DPB for STAT (see [KERNEL.md](KERNEL.md)) | Heath CP/M BIOS |
+| ~~V10~~ | Console and clock: **not needed**, the console is the BIOS's and the clock tick is the ROM's | H8/H89 manuals |
+| ~~Q1~~ | Synthetic Ctrl-Z for HDOS text files read via BDOS: **no**. Files pass through unchanged, so binary files copy exactly. HDOS pads the last sector of a file, usually with zeros, which print as nothing | decided |
 | Q2 | Support 48K machines? | depends on measured size |
 | ~~Q3~~ | Assembler: **zmac** in 8080 mode (`-8`), which rejects Z80-only opcodes. Hex by default, octal `Q` where Heath documents use octal | decided |
 

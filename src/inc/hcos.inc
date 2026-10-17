@@ -11,7 +11,7 @@ CCPB	equ	BDOSB-0800h	; CCP / HCCP
 LOADB	equ	CCPB-80h	; warm boot loads LOADB..LOADEND-1
 LOADEND	equ	BIOSB-80h
 KXEND	equ	LOADB		; the extension ends below that
-KXSIZE	equ	1600h
+KXSIZE	equ	1700h
 KXBASE	equ	(KXEND and 0FF00h)-KXSIZE ; HCOS.SYS (the TPA top)
 KXVEC	equ	BDOSB+11h	; BDOS's hook vector (3 bytes, a JMP)
 KXSIGO	equ	3		; signature "HCKX" at KXBASE+3

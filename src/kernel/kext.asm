@@ -48,6 +48,13 @@ kspg:	db	0
 kblk:	dw	0			; search position
 kidx:	db	0
 kres:	db	0
+kdp:	dw	20			; made-up DPB: 20 records a track,
+	db	3,7,0			; 1K blocks,
+	dw	0,0			; DSM and DRM filled in,
+	db	0,0			; no directory blocks or checksums,
+	dw	0,0			; no system tracks
+KAVLEN	equ	64			; up to 512 blocks
+kav:	ds	KAVLEN
 kslots:	ds	NKSLOT*CHLEN
 kxsp:	dw	0			; the BDOS's SP
 	ds	128			; the extension's stack

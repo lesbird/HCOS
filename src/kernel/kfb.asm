@@ -101,6 +101,10 @@ kftab:	db	15
 	dw	kwrr
 	db	35
 	dw	ksize
+	db	27
+	dw	kalv
+	db	31
+	dw	kdpb
 	db	40
 	dw	kwrr
 	db	0
@@ -782,7 +786,17 @@ ksg6:	push	psw
 	dad	d
 	pop	psw
 	mov	m,a
-	xra	a
+	adi	7			; a block number in the map for each
+	rrc				; 1K, for STAT's sizes
+	rrc
+	rrc
+	ani	1Fh
+	jz	ksg8
+ksg7:	inx	h
+	mvi	m,1
+	dcr	a
+	jnz	ksg7
+ksg8:	xra	a
 	ret
 
 ; f19 - delete every match. FFH if there was none.
@@ -862,6 +876,121 @@ ksize:	call	kfname
 	inx	h
 	mvi	m,0
 	xra	a
+	ret
+
+; f27 / f31 - an allocation vector and a DPB made up for the HDOS disk,
+; so that STAT's figures mean something: 1K blocks, as many as the
+; volume has sectors for, with the free ones (the GRT's free chain) at
+; the end. The address goes where the BDOS said (DE, in kfcb).
+kalv:	lxi	b,kav
+	jmp	kdk
+kdpb:	lxi	b,kdp
+kdk:	push	b
+	lxi	h,kav
+	lxi	b,KAVLEN
+	call	zfill
+	lxi	h,LABSEC		; the volume's size, from its label
+	call	kg0
+	jc	kdk.x
+	lhld	dbuf+LAB.SIZ
+	call	kq4			; DSM = sectors / 4 - 1
+	dcx	h
+	shld	kdp+5
+	lda	dunit			; count the directory's blocks
+	call	uent
+	push	h
+	lxi	d,UNT.DIS
+	dad	d
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+	lxi	b,0
+kdk1:	mov	a,h
+	ora	l
+	jz	kdk2
+	push	b
+	call	rdblk
+	pop	b
+	jc	kdk.y
+	lhld	psec
+	lxi	d,DIS.LNK
+	dad	d
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+	inr	c
+	jnz	kdk1
+kdk2:	mvi	a,DIRENT		; DRM = blocks * 22 - 1
+	mov	d,b
+	mov	e,c
+	call	rmu86
+	dcx	h
+	shld	kdp+7
+	pop	h			; the unit: count the free groups
+	push	h
+	inx	h			; (UNT.SPG)
+	mov	e,m
+	inx	h			; (UNT.GRT)
+	inx	h
+	mov	h,m
+	mvi	l,0
+	mvi	c,0
+kdk3:	mov	a,m			; GRT[g] = the next free one
+	ora	a
+	jz	kdk4
+	mov	l,a
+	inr	c
+	jnz	kdk3			; (a loop in the chain stops at 256)
+kdk4:	mov	a,c
+	mvi	d,0
+	call	rmu86			; free sectors
+	call	kq4
+	xchg				; DE = free blocks
+	lhld	kdp+5			; BC = used = DSM + 1 - free
+	inx	h
+	mov	a,l
+	sub	e
+	mov	c,a
+	mov	a,h
+	sbb	d
+	mov	b,a
+	lxi	h,kav			; set the first BC bits of kav
+	mvi	d,80h
+kdk5:	mov	a,b
+	ora	c
+	jz	kdk.y
+	mov	a,m
+	ora	d
+	mov	m,a
+	mov	a,d
+	rrc
+	mov	d,a
+	jnc	kdk6
+	inx	h
+kdk6:	dcx	b
+	jmp	kdk5
+kdk.y:	pop	h			; (the unit)
+	lxi	h,0FFFFh		; psec was used
+	shld	synblk
+kdk.x:	pop	d			; the vector or the DPB
+	rc
+	lhld	kfcb
+	mov	m,e
+	inx	h
+	mov	m,d
+	xra	a
+	ret
+; kq4 - HL = HL / 4.
+kq4:	call	kq2
+kq2:	ora	a
+	mov	a,h
+	rar
+	mov	h,a
+	mov	a,l
+	rar
+	mov	l,a
 	ret
 
 ; kxreset - at every boot: forget what is known about the disks and

@@ -8,7 +8,7 @@ and contain no DRI code:
 |---|---|---|
 | **BDOS**: CP/M 2.2 file system and console | system tracks, E200H | 3 |
 | **HCCP**: the command processor | system tracks, DA00H | 4 |
-| **HCOS.SYS**: kernel extension, the HDOS file system for CP/M programs | file, loaded to C300H | 4 |
+| **HCOS.SYS**: kernel extension, the HDOS file system for CP/M programs | file, loaded to C200H | 4 |
 | **HDOS.COM**: HDOS personality (SCALLs), loaded when an `.ABS` runs | file | 1-2b |
 
 ```sh
@@ -23,8 +23,8 @@ python3 tools/sysgen.py YOUR.h8d OUT.h8d --base DA00 \
 
 | Target | Heath CP/M | BIOS | BDOS | HCCP | HCOS.SYS |
 |---|---|---|---|---|---|
-| h17 | 64K for the H17 | F000H | E200H | DA00H | C300H |
-| h37 | 64K for the H17 and H37 | E800H | DA00H | D200H | BB00H |
+| h17 | 64K for the H17 | F000H | E200H | DA00H | C200H |
+| h37 | 64K for the H17 and H37 | E800H | DA00H | D200H | BA00H |
 
 `sysgen.py` finds the CCP in the system tracks by DRI's copyright line.
 The two disk layouts differ (offset 80H on H17 disks, 100H on H37 disks).
@@ -69,8 +69,8 @@ they differ, so sysgen copies it from the BDOS it replaces.
 
 | Address | Contents |
 |---|---|
-| 0100H-C2FFH | TPA (48.75K; 56K if there is no HCOS.SYS) |
-| C300H-D8FFH | HCOS.SYS: a JMP to the BDOS (0006H points here), the KFB layer, the HDOS file system, buffers |
+| 0100H-C1FFH | TPA (48.5K; 56K if there is no HCOS.SYS) |
+| C200H-D8FFH | HCOS.SYS: a JMP to the BDOS (0006H points here), the KFB layer, the HDOS file system, buffers |
 | DA00H-E1FFH | HCCP, 2008 of 2048 bytes (variables and stack included) |
 | E200H-EF7FH | BDOS, 3108 of the 3456 bytes that load, then its variables and 24-level stack |
 | F000H-FFFFH | Heath BIOS |
@@ -173,7 +173,9 @@ On top of that:
 CP/M programs use HDOS disks through the BDOS:
 
 - **The hook:** the BDOS has a hook vector at E211H (`KXVEC`). Before it
-  selects the drive for an FCB call, it offers the call there. HCCP points
+  selects the drive for an FCB call, it offers the call there. Functions
+  27 and 31 (allocation vector and DPB) are offered too, for the current
+  drive. HCOS.SYS puts its answer in the BDOS's result. HCCP points
   it at HCOS.SYS's `kxhook` at every boot.
 - **Which drives:** the call is handled there when the drive is an HDOS
   disk, detected as HDOS.COM does. Otherwise the BDOS carries on as usual.
@@ -198,11 +200,15 @@ the CP/M programs wrote.
 
 ### Limits
 
-- **STAT** on an HDOS disk reports CP/M allocation data, which is
-  meaningless there.
+- **STAT**, through functions 27 and 31, gets a DPB and allocation
+  vector made up from the HDOS disk: 1K blocks, the volume's size from
+  its label, the directory's size from its block chain, and the free
+  space from the GRT's free chain. Search entries carry a block number
+  for each 1K, so STAT shows file sizes. The record count stops at 128,
+  so a file over 16K is shown as 16K.
 - **Search with "?" in the drive byte** (every entry) still goes to the
   CP/M side.
 - **HDOS text** is LF-only. CP/M's TYPE shows it stepped, because no
-  conversion is done (open question Q1).
+  conversion is done (Q1).
 - **HDOS programs get less memory under HCOS:** HDOS.COM's buffers go below
   HCOS.SYS.

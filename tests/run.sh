@@ -134,6 +134,9 @@ if [ "$CPMDISK" = hcos ]; then
         --step 'A>|REN B:X.COM=B:XSUB.COM\r' \
         --step 'A>|PIP A:B.ABS=B:BASIC.ABS[OV]\r' \
         --step 'A>|DIR B:\r'
+    run_test stat-on-hdos hcos+hdos 'Bytes Remaining On B: 15k' -- \
+        --step 'A>|STAT B:DSK:\r' \
+        --step 'A>|STAT B:*.*\r'
     run_test hdos-reads-cpm "hdos=$WORK/cpm-on-hdos-1.h8d" 'DDT     .COM    19' -- \
         --step '>|CAT *.COM\r'
     run_test h37-hcos cpm37+hdos37 'Enter File Name' \

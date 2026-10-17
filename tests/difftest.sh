@@ -19,6 +19,10 @@ hdr() {
     sed -n "s/^; $1: //p" "$2" | head -1
 }
 
+# Each run waits for }} and then stops at the next prompt, so that the
+# terminal has drawn everything (h89run stops soon after --expect is seen
+# in the serial output, which can be before the screen shows it).
+
 # Screen text between the markers, borders and trailing blanks removed.
 between() {
     sed -e 's/^|//' -e 's/|$//' -e 's/ *$//' "$1" |
@@ -63,7 +67,7 @@ for name in "$@"; do
     "$H89RUN" --disk0 "$disk" --seconds 120 \
         --step 'H: |B\r' --step 'ACTION?|\r' --step ')?|14-Oct-86\r' \
         --step ">|$prog$args\r" ${keys:+--step "$wait|$keys"} \
-        --expect '}}' >"$WORK/$name-hdos.screen" 2>&1
+        --step '}}|' --expect '>' >"$WORK/$name-hdos.screen" 2>&1
     between "$WORK/$name-hdos.screen" >"$WORK/$name-hdos.out"
 
     # HDOS.COM on CP/M.
@@ -73,7 +77,7 @@ for name in "$@"; do
     "$H89RUN" --disk0 "$disk" --seconds 120 \
         --step 'H: |B\r' \
         --step "A>|HDOS $flags$prog$args\r" ${keys:+--step "$wait|$keys"} \
-        --expect '}}' >"$WORK/$name-cpm.screen" 2>&1
+        --step '}}|' --expect '>' >"$WORK/$name-cpm.screen" 2>&1
     between "$WORK/$name-cpm.screen" >"$WORK/$name-cpm.out"
 
     check "$name" cpm
@@ -89,7 +93,7 @@ for name in "$@"; do
         "$H89RUN" --disk0 "$disk" --disk1 "$disk1" --seconds 120 \
             --step 'H: |B\r' --step 'A>|B:\r' \
             --step "B>|A:HDOS $flags$prog$args\r" ${keys:+--step "$wait|$keys"} \
-            --expect '}}' >"$WORK/$name-b.screen" 2>&1
+            --step '}}|' --expect '>' >"$WORK/$name-b.screen" 2>&1
         between "$WORK/$name-b.screen" >"$WORK/$name-b.out"
         check "$name-on-hdos-disk" b
     fi

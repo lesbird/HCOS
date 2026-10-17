@@ -189,10 +189,10 @@ programs using HDOS disks, need the rest of HCOS.
 | Address | Contents |
 |---|---|
 | 0000H-00FFH | CP/M page zero (RST 7 points at the SCALL dispatcher while an HDOS program runs) |
-| 0100H-C2FFH | CP/M programs (48.75K). HDOS.COM sits in 0100H-1FFFH while an HDOS program runs. |
+| 0100H-C1FFH | CP/M programs (48.5K). HDOS.COM sits in 0100H-1FFFH while an HDOS program runs. |
 | 2000H-227FH | Emulated HDOS system area (for HDOS programs) |
 | 2280H- | HDOS programs |
-| C300H-D8FFH | HCOS.SYS |
+| C200H-D8FFH | HCOS.SYS |
 | DA00H-E1FFH | HCCP |
 | E200H-EFFFH | BDOS |
 | F000H-FFFFH | Heath BIOS |
@@ -292,8 +292,9 @@ A failing test leaves its final screen in `build/` for inspection.
   TEST17) are not supported.
 - **HDOS text** ends lines with LF only and isn't converted, so CP/M's
   TYPE shows it stepped.
-- **STAT** on an HDOS disk shows CP/M allocation figures, which mean
-  nothing there.
+- **STAT** on an HDOS disk gives the free space, capacity and directory
+  size from the disk's own label, GRT and directory. A file over 16K is
+  shown as 16K.
 - **The date** for new HDOS files is fixed (01-Jan-80); CP/M has no clock.
 
 ## Project layout

@@ -201,5 +201,5 @@ scripted sessions: HDOS BASIC; PIP listing CP/M and HDOS disks; copying in
 both directions; and real HDOS booting a disk HDOS.COM wrote to and running
 the program copied onto it. Both run with `make test`.
 
-HDOS.COM is now full: its code ends 18 bytes short of 2000H. Further work
+HDOS.COM is full: its low code ends exactly at the ROM library (1830H) and its high area 4 bytes short of 2000H. Further work
 goes into the HCOS kernel (phase 3 on).
