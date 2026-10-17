@@ -88,6 +88,11 @@ $(B)/disks/hcos-full.h8d: $(B)/disks/hcos.h8d $(HDOSCOM)
 $(B)/disks/hcos37-full.h37: $(B)/disks/hcos37.h37 $(HDOSCOM)
 	$(fulldisk)
 
+# The full disks are kept in the repo, in disks/.
+disks/%: $(B)/disks/%
+	@mkdir -p $(@D)
+	cp $< $@
+
 $(B)/hdos.cim: src/hdoscom/hdos.asm $(wildcard src/hdoscom/*.asm) $(INC) | $(ZMAC)
 	$(assemble)
 
@@ -118,7 +123,7 @@ test-hcos: all disks $(B)/disks/hcos.h8d $(B)/disks/hcos37.h37
 	CPMDISK=hcos tests/difftest.sh
 
 hcos: $(B)/disks/hcos.h8d $(B)/disks/hcos37.h37 \
-	    $(B)/disks/hcos-full.h8d $(B)/disks/hcos37-full.h37
+	    disks/hcos-full.h8d disks/hcos37-full.h37
 
 clean:
 	rm -rf $(B)

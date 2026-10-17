@@ -233,6 +233,18 @@ needs RAM at 0. The H89 can switch between the two with a port bit.
   again before returning. The switching code sits in a work area of the
   HDOS system area, because HCOS's own code is under the ROM.
 
+## Ready-made disks
+
+`disks/` has bootable HCOS disks, ready for an emulator or a real
+machine:
+
+- `hcos-full.h8d`: H17 (hard-sectored, 100K);
+- `hcos37-full.h37`: H37 (soft-sectored), booted from the H37.
+
+Each is Heath CP/M 2.2.03 with HCOS installed, plus `HDOS.COM`,
+`ERRORMSG.SYS`, HDOS `BASIC.ABS` and `EDIT.ABS`. Type `BASIC` at the
+`A>` prompt. `make hcos` rebuilds them.
+
 ## Installing on a disk
 
 HCOS installs onto a copy of a **Heath CP/M 2.2.03 64K** disk, for the H17
@@ -267,7 +279,7 @@ make         # assemble everything into build/
 make test    # make test disks and run all 60 emulator tests
 make hcos    # build/disks/hcos.h8d and hcos37.h37: disks that boot HCOS,
              # and hcos-full.h8d and hcos37-full.h37 with HDOS.COM,
-             # ERRORMSG.SYS, BASIC.ABS and EDIT.ABS added
+             # ERRORMSG.SYS, BASIC.ABS and EDIT.ABS added (copied to disks/)
 ```
 
 The tests are mostly **differential**: the same program or keystrokes run
