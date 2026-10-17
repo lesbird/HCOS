@@ -1,15 +1,14 @@
-; bios.asm - the HCOS v2 BIOS (phase 1: no disks yet)
+; bios.asm - the HCOS v2 BIOS
 ;
-; The CP/M 2.2 jump table at BIOSB, then HCOS's own entries. Phase 1
-; has the cold boot and memory switch, the console (8250, polled) and
-; the 2 ms clock. The console has a 32-byte type-ahead buffer, filled
+; The CP/M 2.2 jump table at BIOSB, then HCOS's own entries. The cold
+; boot and memory switch, the console (8250) and the 2 ms clock. The console has a 32-byte type-ahead buffer, filled
 ; by the 8250's receive interrupt (RST 3), so keys typed while a
-; program is busy aren't lost. The disk entries are stubs that fail, and warm boot
-; re-enters the shell without reloading it.
+; program is busy aren't lost. Three H17 drives (h17.asm). Warm boot
+; re-enters the shell without reloading it (phase 3).
 ;
 ; The boot record jumps to BOOT with interrupts off and the ROM still
 ; in. Written from the CP/M 2.2 interface and the phase 0 research
-; (docs/research/boot.md); no Heath or DRI code.
+; (docs/research/boot.md, h17.md); no Heath or DRI code.
 
 	.8080
 	include	layout.inc
@@ -46,6 +45,7 @@ boot:	lxi	sp,stack
 	out	GPP
 	call	page0
 	call	coninit
+	call	dinit
 	ei
 	lxi	h,signon
 	call	print
@@ -102,6 +102,23 @@ p0rst:	mvi	m,0fbh
 	mvi	m,45h
 	ret
 
+; Disks: nothing selected, every track unknown, buffer empty.
+dinit:	xra	a
+	sta	s7f
+	out	DP.CTL
+	sta	mtim
+	sta	hstact
+	sta	hstwrt
+	sta	unacnt
+	dcr	a
+	lxi	h,h17trk
+	mov	m,a
+	inx	h
+	mov	m,a
+	inx	h
+	mov	m,a
+	ret
+
 ; ---- Clock: RST 1, every 2 ms ----
 ; Writes the general purpose port again on every tick, as Heath's BIOS
 ; and HDOS 3.0 do, and counts.
@@ -113,7 +130,19 @@ clock:	push	psw
 	lhld	tickc
 	inx	h
 	shld	tickc
-	pop	h
+	mov	a,l		; every 512 ms: the motor-off timer
+	ora	a
+	jnz	clk9
+	lxi	h,mtim
+	ora	m
+	jz	clk9		; stopped
+	dcr	m
+	jnz	clk9
+	lda	s7f		; time: motor off, no drive selected
+	ani	0e1h
+	sta	s7f
+	out	DP.CTL
+clk9:	pop	h
 	pop	psw
 	ei
 	ret
@@ -222,19 +251,45 @@ listst:	mvi	a,0ffh		; ready, so nothing waits on it
 reader:	mvi	a,1ah		; end of file
 	ret
 
-; ---- Disks: phase 2 ----
+; ---- Disks: three H17 drives ----
+; CP/M's 128-byte records are packed two to a 256-byte host sector by
+; DRI's blocking/deblocking algorithm (CP/M 2.2 Alteration Guide),
+; written for HCOS. The skew between host sectors is applied by the
+; driver, so the DPH has no XLT and SECTRAN changes nothing: the disks
+; are laid out exactly as Heath's.
 
-seldsk:	lxi	h,0		; no such drive
+NDRIVE	equ	3
+SPT	equ	20		; records a track
+HSTSPT	equ	10		; host sectors a track
+BLKREC	equ	8		; records a block (1K)
+WRDIR	equ	1		; write type: directory, write it now
+WRUAL	equ	2		; write type: first record of a new block
+
+seldsk:	lxi	h,0
+	mov	a,c
+	cpi	NDRIVE
+	rnc			; no such drive
+	sta	sekdsk
+	mov	l,a		; HL = dph + 16 * drive
+	dad	h
+	dad	h
+	dad	h
+	dad	h
+	lxi	d,dph
+	dad	d
 	ret
 
-home:	lxi	b,0
-settrk:	mov	l,c
-	mov	h,b
-	shld	track
+home:	lda	hstwrt		; keep a sector that is waiting to be written
+	ora	a
+	jnz	home1
+	sta	hstact
+home1:	lxi	b,0
+settrk:	mov	a,c
+	sta	sektrk
 	ret
 
 setsec:	mov	a,c
-	sta	sector
+	sta	seksec
 	ret
 
 setdma:	mov	l,c
@@ -242,13 +297,174 @@ setdma:	mov	l,c
 	shld	dma
 	ret
 
-read:
-write:	mvi	a,1		; error
-	ret
-
 sectran: mov	l,c
 	mov	h,b
 	ret
+
+read:	xra	a
+	sta	unacnt
+	inr	a
+	sta	readop
+	sta	rsflag		; read the host sector first
+	mvi	a,WRUAL
+	sta	wrtype
+	jmp	rwoper
+
+write:	xra	a
+	sta	readop
+	mov	a,c
+	sta	wrtype
+	cpi	WRUAL
+	jnz	chkuna
+	mvi	a,BLKREC	; a new block: its records need no pre-read
+	sta	unacnt
+	lxi	h,sekdsk
+	lxi	d,unadsk
+	call	cpy3
+chkuna:	lxi	h,unacnt
+	mov	a,m
+	ora	a
+	jz	alloc
+	dcr	m		; still in the new block?
+	lxi	h,sekdsk
+	lxi	d,unadsk
+	call	cmp3
+	jnz	alloc
+	lxi	h,unasec	; yes: the next record of it
+	inr	m
+	mov	a,m
+	cpi	SPT
+	jc	noovf
+	mvi	m,0
+	lxi	h,unatrk
+	inr	m
+noovf:	xra	a
+	sta	rsflag
+	jmp	rwoper
+alloc:	xra	a
+	sta	unacnt
+	inr	a
+	sta	rsflag
+
+; Find the record's host sector, in the buffer or from the disk, then
+; move the record. sekdsk/sektrk/seksec, readop, rsflag and wrtype say
+; what to do. A = 0, or 1 on an error.
+rwoper:	xra	a
+	sta	erflag
+	lda	seksec
+	ora	a
+	rar			; host sector = record / 2
+	sta	sekhst
+	lxi	h,hstact
+	mov	a,m
+	mvi	m,1
+	ora	a
+	jz	filhst		; the buffer was empty
+	lxi	h,sekdsk	; the same host sector?
+	lxi	d,hstdsk
+	mvi	b,2
+	call	cmpn
+	jnz	rw1
+	lda	sekhst
+	lxi	h,hstsec
+	cmp	m
+	jz	match
+rw1:	lda	hstwrt		; another: write the buffer out first
+	ora	a
+	cnz	writehst
+filhst:	lxi	h,sekdsk
+	lxi	d,hstdsk
+	mvi	b,2
+	call	cpyn
+	lda	sekhst
+	sta	hstsec
+	lda	rsflag
+	ora	a
+	cnz	readhst
+	xra	a
+	sta	hstwrt
+match:	lda	seksec		; the record's half of hstbuf
+	rar
+	mvi	a,0
+	rar			; 80H for the second half
+	mov	e,a
+	mvi	d,0
+	lxi	h,hstbuf
+	dad	d
+	xchg			; DE = in hstbuf
+	lhld	dma
+	mvi	b,128
+	lda	readop
+	ora	a
+	jnz	mv2		; a read: from hstbuf to dma
+	mvi	a,1		; a write: from dma, and the buffer is changed
+	sta	hstwrt
+	xchg
+mv2:	ldax	d		; from DE to HL
+	mov	m,a
+	inx	d
+	inx	h
+	dcr	b
+	jnz	mv2
+	lda	wrtype
+	cpi	WRDIR
+	lda	erflag
+	rnz
+	ora	a
+	rnz			; an error already
+	sta	hstwrt		; directory: write it now
+	call	writehst
+	lda	erflag
+	ret
+
+writehst:
+	call	h17wr
+	jmp	hsterr
+readhst:
+	call	h17rd
+hsterr:	rnc
+	mvi	a,1
+	sta	erflag
+	xra	a		; the buffer is no good now
+	sta	hstact
+	ret
+
+; Compare or copy 3 bytes (drive, track, sector) at HL and DE, or B.
+cmp3:	mvi	b,3
+cmpn:	ldax	d
+	cmp	m
+	rnz
+	inx	d
+	inx	h
+	dcr	b
+	jnz	cmpn
+	ret
+cpy3:	mvi	b,3
+cpyn:	mov	a,m
+	stax	d
+	inx	d
+	inx	h
+	dcr	b
+	jnz	cpyn
+	ret
+
+	include	h17.asm
+
+; DPHs: no XLT, scratch, DIRBUF, DPB, CSV, ALV.
+dph:	dw	0,0,0,0,dirbuf,dpb,csv0,alv0
+	dw	0,0,0,0,dirbuf,dpb,csv0+CKS,alv0+ALVLEN
+	dw	0,0,0,0,dirbuf,dpb,csv0+2*CKS,alv0+2*ALVLEN
+
+; The Heath H17 format: single-sided, 40 tracks, 1K blocks, 3 reserved
+; tracks (docs/research/h17.md, 4.4).
+DSM	equ	91
+CKS	equ	16
+ALVLEN	equ	DSM/8+1
+dpb:	dw	SPT
+	db	3,7,0		; BSH, BLM, EXM
+	dw	DSM,63		; DSM, DRM
+	db	0c0h,0		; AL0, AL1
+	dw	CKS,3		; CKS, OFF
 
 signon:	db	0dh,0ah,'HCOS 2.0',0dh,0ah,0
 
@@ -258,10 +474,40 @@ signon:	db	0dh,0ah,'HCOS 2.0',0dh,0ah,0
 
 gppv	equ	BIOSRAM		; the value kept in the general purpose port
 tickc	equ	gppv+1		; 2 ms ticks since reset
-track	equ	tickc+2
-sector	equ	track+2
-dma	equ	sector+1
-rin	equ	dma+2	; ring: next free slot (low byte)
+rin	equ	tickc+2		; ring: next free slot (low byte)
 rout	equ	rin+1		; ring: next key (low byte)
-rbuf	equ	(rout+1+1fh) and 0ffe0h ; 32 bytes, 32-aligned
-stack	equ	rbuf+32+64
+dma	equ	rout+1
+; deblocking: sekdsk-seksec, hstdsk-hstsec and unadsk-unasec are each
+; drive, track, sector in that order
+sekdsk	equ	dma+2
+sektrk	equ	sekdsk+1
+seksec	equ	sektrk+1
+sekhst	equ	seksec+1
+hstdsk	equ	sekhst+1
+hsttrk	equ	hstdsk+1
+hstsec	equ	hsttrk+1
+unadsk	equ	hstsec+1
+unatrk	equ	unadsk+1
+unasec	equ	unatrk+1
+unacnt	equ	unasec+1
+hstact	equ	unacnt+1
+hstwrt	equ	hstact+1
+readop	equ	hstwrt+1
+rsflag	equ	readop+1
+wrtype	equ	rsflag+1
+erflag	equ	wrtype+1
+; the H17 driver
+s7f	equ	erflag+1	; what is in port 7FH (not the step bits)
+mtim	equ	s7f+1		; motor off, in 512 ms, 0 = stopped
+h17w	equ	mtim+1		; 1 = writing
+retry	equ	h17w+1
+physec	equ	retry+1
+tdl	equ	physec+1	; tick deadline
+h17trk	equ	tdl+2		; each drive's track, FFH = unknown
+rbuf	equ	(h17trk+NDRIVE+1fh) and 0ffe0h ; 32 bytes, 32-aligned
+hstbuf	equ	rbuf+32		; 256
+dirbuf	equ	hstbuf+256	; 128
+alv0	equ	dirbuf+128
+csv0	equ	alv0+NDRIVE*ALVLEN
+stack	equ	csv0+NDRIVE*CKS+64
+	assert	stack <= 10000h

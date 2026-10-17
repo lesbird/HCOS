@@ -10,12 +10,16 @@ WORK=$V2/build/test
 mkdir -p "$WORK"
 pass=0 fail=0
 
-# run_test name expect step...
+# run_test name expect [h89run option...] -- step...
+#   The boot disk is a copy of build/hcos.h8d, left in build/test/NAME.h8d.
 run_test() {
     name=$1 expect=$2
     shift 2
+    opts=
+    while [ $# -gt 0 ] && [ "$1" != "--" ]; do opts="$opts $1"; shift; done
+    [ "$1" = "--" ] && shift
     cp "$V2/build/hcos.h8d" "$WORK/$name.h8d"
-    if "$H89RUN" --disk0 "$WORK/$name.h8d" --seconds 30 \
+    if "$H89RUN" --disk0 "$WORK/$name.h8d" $opts --seconds 120 \
             --step 'H: |B\r' "$@" --expect "$expect" \
             >"$WORK/$name.screen" 2>&1; then
         echo "PASS $name"
@@ -27,11 +31,37 @@ run_test() {
 }
 
 run_test boot 'HCOS 2.0'
-run_test ver 'phase 1 test shell' --step 'A>|VER\r'
-run_test clock '1 SECOND' --step 'A>|WAIT\r'
-run_test time ' ms by the clock' --step 'A>|TIME\r'
+run_test ver 'phase 1 test shell' -- --step 'A>|VER\r'
+run_test clock '1 SECOND' -- --step 'A>|WAIT\r'
+run_test time ' ms by the clock' -- --step 'A>|TIME\r'
 # Keys typed while the shell is busy wait in the type-ahead buffer.
-run_test typeahead 'phase 1 test shell' --step 'A>|WAIT\rVER\r'
+run_test typeahead 'phase 1 test shell' -- --step 'A>|WAIT\rVER\r'
+
+# The H17 driver and deblocking, checked against the image on the host.
+IMG="python3 $V2/tests/h17img.py"
+HDOSDISK=$H89_DIR/disks/HDOS_2-0_System.h8d
+run_test sum-a "$($IMG sum "$V2/build/hcos.h8d")" -- --step 'A>|SUM A\r'
+# An HDOS disk: its headers carry the volume number, which is ignored.
+cp "$HDOSDISK" "$WORK/hdos-b.h8d"
+run_test sum-hdos "$($IMG sum "$HDOSDISK")" --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|SUM B\r'
+run_test no-disk 'READ ERROR 00000 00000' -- --step 'A>|SUM B\r'
+# Records 0 and 1 share a host sector, written when record 2 needs the
+# buffer, so the error is reported at record 2.
+run_test write-protect 'WRITE ERROR 00020 00002' --ro -- --step 'A>|FILL A 20\r'
+# All three write types. SUM reads the whole disk after them, which also
+# writes out the last host sector.
+$IMG apply "$V2/build/hcos.h8d" "$WORK/writes.want" FILL:20 HALF:21 DIRW:22
+run_test writes "$($IMG sum "$WORK/writes.want")" -- \
+    --step 'A>|FILL A 20\r' --step 'A>|HALF A 21\r' \
+    --step 'A>|DIRW A 22\r' --step 'A>|SUM A\r'
+$IMG cmp "$WORK/writes.want" "$WORK/writes.h8d" ||
+    { echo "FAIL writes-image (the disk isn't what was written)"; fail=$((fail + 1)); }
+# A directory write goes to the disk at once, with nothing after it.
+$IMG apply "$V2/build/hcos.h8d" "$WORK/dirw.want" DIRW:30
+run_test dirw-now 'A>' -- --step 'A>|DIRW A 30\r' --step 'A>|VER\r'
+$IMG cmp "$WORK/dirw.want" "$WORK/dirw-now.h8d" ||
+    { echo "FAIL dirw-now-image (the directory write didn't reach the disk)"; fail=$((fail + 1)); }
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

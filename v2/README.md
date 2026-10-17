@@ -6,8 +6,10 @@ or Heath CP/M code, and runs CP/M and HDOS programs natively: each kind
 gets the memory map its own operating system gives it. CP/M programs get
 Heath CP/M's 56K TPA.
 
-Status: **phase 1 done**. HCOS v2 boots from an H17 disk on its own boot
+Status: **phase 2 done**. HCOS v2 boots from an H17 disk on its own boot
 record and BIOS, to a test shell, 2.2 s after reset (Heath CP/M: 5.7 s).
+The BIOS has its own H17 driver and reads and writes CP/M and HDOS
+disks.
 The plan is [docs/PLAN.md](docs/PLAN.md), and the phase 0 research is in
 [docs/research/](docs/research/).
 
@@ -36,4 +38,5 @@ make test    # boot it in the emulator and check it
 ```
 
 Boot it with `h89run --disk0 build/hcos.h8d`, then `B` at the `H:`
-prompt. The test shell knows VER, TIME and WAIT.
+prompt. The test shell knows VER, TIME and WAIT, and the disk tests
+SUM, FILL, HALF and DIRW (see `src/shell/tshell.asm`).
