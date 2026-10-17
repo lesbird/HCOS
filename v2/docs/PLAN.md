@@ -1,6 +1,8 @@
 # HCOS version 2: plan
 
-- Status: **draft 0.2**, 2026-10-17. Nothing built yet.
+- Status: **draft 0.3**, 2026-10-17. Phase 0 research done
+  ([research/](research/): [boot.md](research/boot.md),
+  [h17.md](research/h17.md), [h37.md](research/h37.md)). Nothing built yet.
 - Version 1 (the repo's top level; phases 1-6 in
   [../../docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)) runs on top of
   Heath CP/M: Heath's boot loader and BIOS, HCOS's BDOS and HCCP in the
@@ -34,8 +36,9 @@ program's own operating system would:
 
 No Digital Research or Heath CP/M code is used: no CCP, no BDOS, no Heath
 BIOS, no CP/M boot loader. The only code HCOS uses that it doesn't own is
-the machine's ROM, which HDOS programs expect to find there. HCOS also uses
-the ROM's disk routines at cold boot (section 5).
+the machine's ROM, which HDOS programs expect to find there. HCOS's H17
+boot record also uses the ROM's sector read, R.READ, while the ROM is still
+in (section 5).
 
 ### Non-goals for 2.0
 
@@ -60,22 +63,29 @@ the ROM's disk routines at cold boot (section 5).
 
 ## 3. Hardware
 
-What's already known from version 1, and what has to be found out
-(**[R]** = research item, section 8):
+From the phase 0 research (section 8). Details and evidence are in
+[research/](research/).
 
-- **The memory switch:** the H89's ORG-0 bit in port 362Q (F2H) puts RAM
-  at 0000H-1FFFH. Version 1's H-mode already switches it.
-- **Console:** 8250 at 350Q (E8H) on the H89. Heath's BIOS also uses ports
-  372Q/373Q (FAH/FBH) **[R]**.
+- **The memory switch:** port 362Q (F2H). Bit 5 maps RAM at 0000H and
+  bit 1 enables the clock. The ROM leaves it at 82H and Heath's BIOS sets
+  22H. The order is DI, OUT, write page zero, EI. The BIOS keeps the value
+  in a cell and writes it again on every tick, as Heath's BIOS and
+  HDOS 3.0 do.
+- **Console:** the 8250 at 350Q (E8H). MTR-90 leaves it at 9600 baud
+  (19200 with SW501 bit 6), 8N1, polled. HCOS polls (LSR bit 0 in, bit 5
+  out). Ports FAH/FBH are the H8-5's, used only on an H8.
 - **Clock:** a 2 ms interrupt on RST 1. With the ROM in, the ROM takes it
-  and passes it on through the vector at 201FH. With RAM in, the BIOS
-  takes it at 0008H.
-- **H17:** Heath's CP/M BIOS has its own driver on the controller ports
-  174Q-177Q (7CH-7FH). It doesn't call the H17 ROM. HCOS's BIOS needs its
-  own driver too, because the ROM isn't there while a CP/M program runs.
-  The driver is timing-critical. Its models are the H17 ROM (444-19, in
-  the H89 emulator's `roms/`) and Heath's BIOS **[R]**.
-- **H37:** a WD1797 controller. Its model is Heath's H17/H37 BIOS **[R]**.
+  and passes it on through 201FH. With RAM in, the BIOS takes it at 0008H.
+  One 16-bit tick counter serves both, with the motor and settle timers.
+- **H17:** Heath's BIOS drives ports 7CH-7FH itself with a 776-byte copy of
+  the ROM's routines. HCOS does the same, modelled on the ROM. Interrupts
+  are off from the header search to the end of the data. Every per-byte
+  loop takes under 128 T-states, counted for the Z80. The volume number is
+  ignored, so HDOS disks read too. One format: single-sided, 40 tracks.
+- **H37:** a WD1797 behind ports 78H-7BH. Bytes move by a HALT/IN loop.
+  DRQ ends each HALT, and INTRQ on RST 4 ends the transfer. Polling is too
+  slow for double density at 2 MHz. Disks carry a label in sector 1 of
+  track 0 that gives their DPB.
 - **H8 (later):** PAM-8, the H8-4/H8-5 console, and its own ORG-0
   arrangement. The emulator can't test it. The console, clock and memory
   switch are kept in one small part of the BIOS so that the H8 can be
@@ -109,18 +119,33 @@ FFFFH
 - **The BDOS** is version 1's, checked against DRI's. It stays at E200H,
   3.5K with its variables and stack, as in version 1.
 - **The BIOS** has 4K at F000H. Its jump table has the 17 CP/M 2.2 entries
-  at F000H, so programs that call the BIOS directly keep working. The H17
-  driver, the console, the clock and the buffers have to fit there.
-  Heath's H17 BIOS does it in about the same space, with options HCOS
-  doesn't need (CONFIGUR's I/O byte, printers).
-- **H37:** Heath's H17/H37 BIOS needs 5.5K, and so Heath's H17/H37 CP/M
-  has only a 54K TPA. HCOS tries to fit both drivers in 4K. If they don't
-  fit, the H37 build gets its own BIOS base (as in version 1) and
-  SYSGEN chooses by drive type.
+  at F000H, so programs that call the BIOS directly keep working. One BIOS
+  drives both the H17 and the H37. The research estimates:
+
+  | Part | Bytes |
+  |---|---|
+  | Jump table, disk entries, deblocking (DRI's algorithm, 256-byte host sectors) | 350 |
+  | H17 driver | 490 |
+  | H37 driver, SS SD / + DS and 256-byte MFM | 300 / 450 |
+  | Console, clock, memory switch, warm boot, messages | 270 |
+  | DPHs, DPB, skew, drive tables | 155 |
+  | **Code and tables** | **1.55-1.7K** |
+  | Host buffer 256, DIRBUF 128, ALV/CSV for 6 drives 170-440, variables and stack 100 | 0.65-0.9K |
+  | **BIOS** | **2.2-2.6K** |
+
+  Heath's H17/H37 BIOS needs 5.8K, which is why Heath's H17/H37 CP/M has
+  only a 54K TPA. HCOS leaves out 1024-byte sectors (they need a
+  1024-byte buffer), double-stepping, the I/O byte, printers and
+  type-ahead.
+- **Spare room:** the 1.4-1.8K left at the top of the BIOS area can be
+  spent later. It could hold more BIOS (1024-byte sectors, type-ahead), or
+  it could move the BDOS and shell up for a TPA over 56K. A higher TPA
+  means a CP/M that differs from Heath's layout, so it waits until
+  everything works.
 - **The shell** is 2K at DA00H, like the CCP, so programs that keep the CCP
   (top of TPA = (0006H)-0806H) and return to it with RET work as on CP/M.
-- **HDOS disks, from CP/M programs:** the HDOS file system (version 1's
-  HCOS.SYS, about 4K) is an extension. It goes below the shell only while
+- **HDOS disks, from CP/M programs:** the HDOS file system is an
+  extension, the file `HDOSFS.SYS` (version 1's HCOS.SYS, about 4K). It goes below the shell only while
   an HDOS disk is logged in, so the TPA is 56K unless it is in use. The
   BDOS marks a drive as HDOS when it logs it in. At the next warm boot the
   shell loads the extension and hooks it in, as in version 1. A CP/M
@@ -135,28 +160,42 @@ FFFFH
 
 ## 5. Booting
 
-1. The ROM's boot (MTR-90, H17 or H37) reads the boot record and jumps to
-   it **[R1: what it loads, where, and how much]**.
-2. **HCOS's boot record** runs with the ROM still in. It loads the system
-   tracks and the BIOS, then switches RAM in and jumps to the BIOS's cold
-   boot. At cold boot it can use the ROM's own disk-read routine
-   **[R1, R2]**, so it needs no driver of its own.
-3. The Heath H17 CP/M format reserves 3 tracks (7.5K). The boot record,
-   shell and BDOS fit there (5.75K). The BIOS doesn't fit as well, so it goes
-   in a file, `HCOS.SYS`, as Heath's goes in BIOS.SYS. SYSGEN writes a
-   list of HCOS.SYS's sectors into the boot record, so the boot record
-   needs no file system code. Keeping the reserved tracks as they are means
-   HCOS disks are ordinary Heath CP/M disks to every other system.
-4. **Warm boot** (^C, JMP 0, function 0) reloads the shell from the system
-   tracks only if its checksum is wrong. The BDOS is reloaded only if *its*
-   checksum is wrong. After a small program the prompt comes back with no
-   disk access.
+1. **The ROM's boot.** From the H17, MTR-90 reads sectors 0-8 of track 0
+   (2304 bytes) to 2280H with the ROM's R.READ, and jumps there. From the
+   H37 it reads all of track 0 from sector 1 (2560 bytes) to 2280H. It
+   tries double density first. The ROM is still in, interrupts are on,
+   SP is 2280H and port F2H holds 82H.
+2. **Everything goes in the reserved tracks.** The Heath CP/M formats
+   reserve 3 tracks, 7680 bytes. HCOS needs the boot record (256 bytes),
+   the shell (2K), the BDOS's code (3.1K) and the BIOS's code and tables
+   (about 1.7K): about 7.1K. The buffers and variables aren't stored on
+   disk. So there is **no HCOS.SYS file**. The disk stays an ordinary
+   Heath CP/M disk, and SYSGEN writes only the reserved tracks. If the
+   BIOS outgrows the space, its cold-boot code goes in a file instead.
+3. **The boot record** loads the reserved tracks and moves each part
+   into place.
+   - **H17:** with the ROM's R.READ (1C3FH: HL = sector 0-399, DE =
+     buffer, BC = bytes; carry and A on error), as Heath's CP/M boot record
+     does. It must keep interrupts on and not HALT (the ROM's clock takes a
+     HALT as a drop to the monitor). It must leave 2000H-20BEH, 201FH and
+     2131H alone, which the ROM uses.
+   - **H37:** MTR-90 has no reusable read. The boot record has its own
+     1797 read loop of about 100 bytes, as Heath's does.
+
+   Then: DI, `OUT F2H,22H`, write page zero, EI, and jump to the BIOS's
+   cold boot.
+4. **Warm boot** (^C, JMP 0, function 0) reloads the shell from the
+   reserved tracks only if its checksum is wrong. The BDOS is reloaded only
+   if *its* checksum is wrong. After a small program the prompt comes back
+   with no disk access.
 
 There's no date question. The date comes from the last `DATE` set,
 saved on the boot disk, and HDOS programs see it in S.DATE.
 
-**Speed:** about 10K to read, 4 tracks on the H17: 1-1.5 s from boot to
-the prompt. To be measured in the emulator.
+**Speed:** MTR-90 takes about 1.2 s before the boot record runs. Reading
+the rest of the 3 tracks takes about 1 s. That's about 2-2.5 s from `B` to
+the prompt, with no BIOS.SYS to look up and read. To be measured in the
+emulator.
 
 ## 6. Shell
 
@@ -187,27 +226,37 @@ where there's a real system to compare with.
 | Phase | Deliverable | Proves |
 |---|---|---|
 | 0 | Tag `v1.0`; set up `v2/`. The research in section 8 | the unknowns before code |
-| 1 | Boot record and BIOS skeleton: cold boot from the system tracks and HCOS.SYS, console, clock, memory switch, a test program in place of the shell. A host tool (`v2/tools/`) makes the boot disk | own boot; boot time |
+| 1 | H17 boot record and BIOS skeleton: cold boot from the reserved tracks, console, clock, memory switch, a test program in place of the shell. A host tool (`v2/tools/`) writes the reserved tracks of a copy of a Heath CP/M disk | own boot; boot time |
 | 2 | The H17 driver in the BIOS: read and write, with retries. Checked by a sector test program and against `h8dtool` | own disk driver |
 | 3 | Version 1's BDOS and a 2K shell on the new BIOS: a bootable HCOS disk. Heath's ED, PIP, STAT, ASM, LOAD, DDT and SUBMIT, with `cpmdiff.sh` against Heath CP/M. TPA measured | CP/M programs native, 56K |
-| 4 | The HDOS extension for CP/M programs (version 1's HCOS.SYS moved across), loaded on demand | HDOS disks |
+| 4 | The HDOS extension for CP/M programs (version 1's HCOS.SYS moved across as HDOSFS.SYS), loaded on demand | HDOS disks |
 | 5 | HDOS programs natively: ROM in, system area, SCALLs, .LINK, .LOADO, ^C handlers. `difftest.sh` against real HDOS 2.0, BASIC | HDOS programs native |
-| 6 | H37 driver | second controller |
+| 6 | H37 driver and boot record. Formats: SS SD 10 x 256 (both H37 images), then DS and 16 x 256 MFM. Labels read as Heath's BIOS does | second controller |
 | 7 | FORMAT, SYSGEN, DRIVES and DATE as programs. A disk HCOS makes boots HCOS | self-hosting |
 | 8 | Sizes trimmed, ready-made disks in `v2/disks/`. Release 2.0 | |
 | 9 | (later) The H8; the ideas in section 9 | |
 
-## 8. Research before code (phase 0)
+## 8. Research (phase 0): done
 
-| # | Question | Where to look |
-|---|---|---|
-| R1 | What MTR-90's H17 and H37 boots read, where to and how much, what they leave set up, and whether a boot record can call the ROM's disk read routine | MTR-90 in the emulator's `roms/`, the emulator's source |
-| R2 | How the H17 is read and written: sector sync, timing loops, checksums, step rate, motor, and use of the 2 ms clock | the H17 ROM (444-19), Heath CP/M's BIOS.SYS (disassembly), the SY driver source in asmx, if it is there |
-| R3 | How the H37 is driven: 1797 commands, density, side select, which formats; how Heath's H37 system tracks are laid out | Heath's H17/H37 BIOS.SYS, the DK driver source in asmx, if it is there |
-| R4 | The DPB for each Heath CP/M format to support, and how each is recognised. In version 1 HCOS used the BIOS's own and never needed them (V9) | Heath BIOS.SYS tables |
-| R5 | The 8250, the other console ports, and what the ROM leaves set up | MTR-90, the emulator |
-| R6 | How much of Heath's 4K BIOS is the H17 driver, and so how much room HCOS's BIOS will have | BIOS.SYS disassembly |
-| R7 | Which real HDOS programs call the H17 ROM's disk routines directly (INIT, SYSGEN, TEST17), and whether they can run alongside the BIOS's driver (the drive's position can change under it) | tests |
+| # | Question | Answer | Notes |
+|---|---|---|---|
+| R1 | What the ROM's boots load; can a boot record use the ROM's read | H17: sectors 0-8 to 2280H, and yes, R.READ works for any sector on any drive (tested). H37: track 0 to 2280H, and no reusable read | [boot.md](research/boot.md) |
+| R2 | How to drive the H17 | Ports, sector format, checksum, timing and Heath's driver, all written up. Model it on the ROM, start the header search early, ignore the volume | [h17.md](research/h17.md) |
+| R3 | How to drive the H37 | HALT/DRQ transfer, INTRQ on RST 4, 4 retries, density by trial, label in T0S1 | [h37.md](research/h37.md) |
+| R4 | DPBs and recognition | H17: one fixed DPB (SPT 20, 1K blocks, DSM 91, DRM 63, OFF 3, skewed). H37: DPB from the disk's label, default SS SD | [h17.md](research/h17.md), [h37.md](research/h37.md) |
+| R5 | Console and clock | 8250 polled at 9600 (or 19200); F2H bits 1 and 5; Heath's FAH/FBH are the H8-5 | [boot.md](research/boot.md) |
+| R6 | How much room the BIOS needs | Heath's H17 BIOS: 3764 bytes, of which the driver is 776. HCOS's: about 2.2-2.6K with both drivers | section 4 |
+| R7 | HDOS programs that call the ROM's disk routines | Not yet: it belongs to phase 5. The BIOS must forget every drive's track after an HDOS program runs | [h17.md](research/h17.md) |
+
+**Not confirmed by the research:**
+- The gap layout on real Heath-formatted H17 disks. The emulator has
+  header sync at byte 10, which leaves Heath's driver a margin of about 1.5
+  bytes.
+- Whether the real H37 card holds off the clock interrupt during a
+  transfer, as the emulator does.
+- What the emulator doesn't model at all: step rate, motor spin-up, head
+  settling and overruns. The first real-hardware test is the check for
+  them.
 
 ## 9. Later: getting memory back
 
@@ -227,7 +276,7 @@ untouched and builds from the top level and from the `v1.0` tag.
 
 | Copied and adapted | Replaced | Not used |
 |---|---|---|
-| `bdos.asm` (CP/M 2.2, checked against DRI's) | Heath BIOS, with HCOS's | `sysgen.py` (Heath system tracks) |
+| `bdos.asm` (CP/M 2.2, checked against DRI's) | Heath BIOS, with HCOS's | `sysgen.py` (replaced by a v2 host tool for the whole reserved tracks) |
 | `hccp.asm`, cut down to the shell | HDOS.COM's `bios.asm` calls, with calls to HCOS's BIOS | `romlib.asm`, while the real ROM is in |
 | `hdosfs`, `hdoswr`, `hdosdir`, `kfb`, `kxlib` (the HDOS extension) | H-mode's per-SCALL switching (no longer needed) | |
 | `scall`, `console`, `files`, `sysarea`, `systab`, `syndir` (the SCALL layer) | | |
