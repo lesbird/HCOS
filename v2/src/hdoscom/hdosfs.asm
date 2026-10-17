@@ -530,7 +530,9 @@ syng:	db	0			; next free group number
 syngrt:	dw	0
 cfbsh:	db	0
 
-; Unit table (DEVDEF UNT.*): flags, SPG, GRT, GRT sector, dir sector
+; Unit table (DEVDEF UNT.*): flags, SPG, GRT, GRT sector, dir sector.
+; (HDOS.COM's is in hisys.asm, where programs can read it.)
+	if	KX
 unttab:	db	0Fh,2
 	dw	0,0,0
 	db	0Fh,2
@@ -539,3 +541,4 @@ unttab:	db	0Fh,2
 	dw	0,0,0
 	db	0Fh,2
 	dw	0,0,0
+	endif

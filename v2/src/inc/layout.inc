@@ -61,6 +61,10 @@ B.LISTST	equ	BIOSB+45
 B.SECTRAN	equ	BIOSB+48
 ; HCOS's own, after CP/M 2.2's 17
 B.TICKS	equ	BIOSB+51	; HL = 2 ms ticks since reset
+; With the ROM in (HDOS programs), interrupts come through the ROM's
+; RAM vector slots at 201FH up. These two serve them from there:
+B.CONINT equ	BIOSB+54	; the console's receive interrupt (EI; RET)
+B.TICKR	equ	BIOSB+57	; the ROM's clock hook: count a tick (RET)
 
 ; Hardware (H89)
 GPP	equ	0F2h		; 362Q: general purpose port (OP2.CTL), SW501 in

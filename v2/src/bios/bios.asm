@@ -34,7 +34,9 @@
 	jmp	listst
 	jmp	sectran
 	jmp	ticks
-	assert	$ == B.TICKS+3
+	jmp	conint
+	jmp	tickr
+	assert	$ == B.TICKR+3
 
 ; ---- Cold and warm boot ----
 
@@ -230,7 +232,12 @@ clock:	push	psw
 	lda	gppv
 	out	GPP
 	push	h
-	lhld	tickc
+	jmp	clk1
+; The ROM's clock handler calls this (through 201FH) with the ROM in.
+; The ROM looks after the general purpose port then.
+tickr:	push	psw
+	push	h
+clk1:	lhld	tickc
 	inx	h
 	shld	tickc
 	mov	a,l		; every 512 ms: the motor-off timer

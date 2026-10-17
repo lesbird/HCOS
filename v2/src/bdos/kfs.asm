@@ -713,11 +713,12 @@ op1:	inx	h
 
 ; f16 - close
 f16:	call	reselect
-close:	mvi	a,F.S2			; not written since open: done
-	call	fcbf
-	mov	a,m
+close:	mvi	a,F.S2			; not written since open: done,
+	call	fcbf			; and 0 (as DRI's; not the code of
+	mov	a,m			; the last directory search)
 	ani	FWF
-	jnz	dircode
+	mvi	a,0
+	jnz	setret
 	call	ckro
 	mvi	c,15
 	call	search

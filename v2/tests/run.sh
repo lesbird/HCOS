@@ -116,5 +116,64 @@ else
     fail=$((fail + 1))
 fi
 
+# HDOS programs, natively: the ROM in, HDOS.COM under it.
+P=$V2/build/hdosprog
+put="$P/BASIC.ABS"
+run_test basic '00010 FOR I=1 TO 3' -- \
+    --step 'A>|BASIC\r' \
+    --step '\n*|10 FOR I=1 TO 3:PRINT I,I*I:NEXT I\r' \
+    --step '\n*|RUN\r' \
+    --step '\n*|SAVE "TEST.BAS"\r' --step '\n*|SCRATCH\r' --step 'Sure?|Y\r' \
+    --step '\n*|OLD "TEST.BAS"\r' --step '\n*|LIST\r'
+# The monitor ROM is at 0000H (its first byte is JMP, 195), keys typed
+# while a program computes wait in the type-ahead, and BYE comes back.
+run_test basic-native 'XSUB     COM' -- \
+    --step 'A>|BASIC\r' --step '\n*|PRINT PEEK(0)\r' \
+    --step ' 195|FOR I=1 TO 2000:NEXT I:PRINT "DONE"\rPRINT 6*7\r' \
+    --step ' 42|BYE\r' --step 'Sure?|Y\r' --step 'A>|DIR\r'
+put="$P/PIP.ABS"
+# PIP lists a CP/M disk through the made-up DIRECT.SYS.
+run_test pip-list-cpm 'PIP     .ABS    19       No-Date' -- \
+    --step 'A>|HDOS PIP\r' --step ':P:|/L\r'
+# An HDOS disk in B: (SY1:): list it, copy from it, run from it.
+cp "$V2/build/hdos.h8d" "$WORK/hdos-b.h8d"
+run_test pip-list-hdos '   21 Files, Using 316 Sectors (62 Free)' \
+    --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|HDOS PIP\r' --step ':P:|SY1:/L/S\r'
+run_test pip-copy-hdos 'Extended Benton Harbor BASIC' \
+    --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|HDOS PIP\r' --step ':P:|SY0:BASIC.ABS=SY1:BASIC.ABS\r' \
+    --step "1 Files Copied|$(printf '\004')" --step 'A>|BASIC\r'
+# Write an HDOS disk, then check real HDOS can use the file.
+cp "$V2/build/hdos.h8d" "$WORK/pip-to-hdos-1.h8d"
+run_test pip-to-hdos '1 Files Copied' --disk1 "$WORK/pip-to-hdos-1.h8d" -- \
+    --step 'A>|HDOS PIP\r' --step ':P:|SY1:PIP2.ABS=SY0:PIP.ABS\r'
+if "$H89RUN" --disk0 "$WORK/pip-to-hdos-1.h8d" --seconds 120 \
+        --step 'H: |B\r' --step 'ACTION?|\r' --step ')?|14-Oct-86\r' \
+        --step '>|CAT PIP2.ABS\r' --step '>|PIP2\r' --expect ':P:' \
+        >"$WORK/hdos-reads-it.screen" 2>&1; then
+    echo "PASS hdos-reads-it"; pass=$((pass + 1))
+else
+    echo "FAIL hdos-reads-it (screen in build/test/hdos-reads-it.screen)"
+    fail=$((fail + 1))
+fi
+put=
+cp "$V2/build/hdos.h8d" "$WORK/hdos-b.h8d"
+run_test run-from-hdos 'BASIC FROM SY1:' --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|HDOS SY1:BASIC\r' --step '\n*|PRINT "BASIC FROM SY1:"\r'
+# An HDOS program moves the HDOS extension aside, and the shell loads it
+# again at the next warm boot, without a select error.
+put="$P/BASIC.ABS"
+cp "$V2/build/hdos.h8d" "$WORK/hdos-b.h8d"
+run_test hdosfs-again 'B: SYSGEN   ABS' --disk1 "$WORK/hdos-b.h8d" -- \
+    --step 'A>|DIR B:\r' --step 'Select|x' \
+    --step 'A>|BASIC\r' --step '\n*|BYE\r' --step 'Sure?|Y\r' \
+    --step 'loaded|' --step 'A>|DIR B:\r'
+# HDOS 3.0 calls (real HDOS 2.0 doesn't have them).
+put="$V2/build/abs/hdos30.abs"
+run_test hdos30 'CRC FEE8 GDA C=0 GDA C=1 A=0D HDOS 3.0 OK' -- \
+    --step 'A>|HDOS30\r'
+put=
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

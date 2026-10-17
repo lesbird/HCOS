@@ -1,11 +1,11 @@
 # HCOS version 2: plan
 
-- Status: **draft 0.7**, 2026-10-17. Phase 0 research done
+- Status: **draft 0.8**, 2026-10-17. Phase 0 research done
   ([research/](research/): [boot.md](research/boot.md),
-  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-4
+  [h17.md](research/h17.md), [h37.md](research/h37.md)). Phases 1-5
   done: HCOS v2 boots from an H17 disk to its own shell, BDOS and BIOS,
-  runs CP/M programs with Heath CP/M's 56K, and lets them use HDOS disks
-  (section 7).
+  runs CP/M programs with Heath CP/M's 56K, lets them use HDOS disks, and
+  runs HDOS programs natively with the ROM in (section 7).
 - Version 1 (the repo's top level; phases 1-6 in
   [../../docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)) runs on top of
   Heath CP/M: Heath's boot loader and BIOS, HCOS's BDOS and HCCP in the
@@ -103,14 +103,14 @@ BDOS and Heath's BIOS have.
 ```
 Address   CP/M program                 HDOS program
 --------  ---------------------------  ------------------------------
-0000H     page zero (RAM)              monitor ROM
-0100H     program (TPA)                ROM, H17 RAM 1400H, H17 ROM 1800H
+0000H     page zero (RAM)              monitor ROM      (RAM under it:
+0100H     program (TPA)                ROM, H17 RAM,     page zero and
+                                       H17 ROM 1800H     HDOS.COM)
 2000H     ...                          HDOS system area
 2280H     ...                          program (usual load address)
   ...                                    ...
-                                       (S.SYSM)
-                                       SCALL layer + HDOS file system
-                                         (loaded for HDOS programs)
+D600H                                  (S.SYSM) HDOS.COM's buffers
+                                         and tables
           [HDOS extension, only when an HDOS disk is in use]
 DA00H     shell (2K, transient, may be overwritten, like the CCP)
 E200H     BDOS (entry E206H): CP/M 2.2 calls and the CP/M file system
@@ -171,11 +171,17 @@ FFFFH
   - It stays until the next cold boot, with the TPA top at C300H
     (48.75K). At each warm boot the shell calls its KX.RST, which resets
     it, hooks it again and sets 0006H.
-- **HDOS programs:** for an `.ABS`, the loader reads the SCALL layer and
-  the HDOS file system into the top of the HDOS program area, below the
-  shell. CP/M disks work from HDOS programs through the BDOS, as with
-  HDOS.COM. This is about 8K, so HDOS programs get about 2280H-C800H,
-  against real HDOS 2.0's EDB0H. Getting more back is in section 9.
+- **HDOS programs** (done in phase 5): the shell runs NAME.ABS through
+  `HDOS.COM` (version 1's, `src/hdoscom/`), which loads into the RAM at
+  0100H-1FFFH and runs the program with the ROM in (version 1's
+  H-mode). Each SCALL comes through the ROM's RST 7 and its slot at 2031H
+  to a few bytes at 2121H, which map RAM in; HDOS.COM and the BDOS and
+  BIOS carry it out and map the ROM in again. So the SCALL layer costs the
+  program no memory. HDOS programs get 2280H-D5FFH: HDOS.COM's high
+  buffers (the GRTs, S.SCR, the channel table) and the tables programs
+  read directly (devices, units, overlays, S.GUP: `hisys.asm`) are at
+  D600H-E1FFH. Real HDOS 2.0 gives EDB0H. HDOS.COM moves the HDOS
+  extension aside while it runs, and the shell loads it again afterwards.
 
 ## 5. Booting
 
@@ -252,7 +258,7 @@ where there's a real system to compare with.
 | 2 | **Done.** The H17 driver in the BIOS (`src/bios/h17.asm`): read and write, with retries, motor and seek timing, not-ready and write-protect errors, the volume ignored. DRI's blocking/deblocking, with Heath's skew applied in the BIOS (the DPH has no XLT). Tests: the test shell reads a whole disk (CP/M and HDOS) and writes with each write type, and `tests/h17img.py` checks the sums and the image byte for byte. A whole disk reads in 41 s (4 turns a track for the skew, plus the steps). BIOS: 1426 bytes | own disk driver |
 | 3 | **Done.** Version 1's BDOS (`src/bdos/`) and HCCP as the shell (`src/shell/shell.asm`) on the new BIOS: `build/hcos.h8d` boots HCOS. BDOS entry E206H, as Heath CP/M 64K: a 56K TPA. Warm boot checks the shell's and the BDOS's sums (kept in the boot sector by `mksys.py`) and reloads only what a program changed. SELDSK checks that a drive is ready the first time, as Heath's does. `tests/cpmdiff.sh` runs v1's CP/M tests (ASM, DDT, ED, PIP, STAT, SUBMIT, the CCP built-ins, console and file calls) on Heath CP/M and on HCOS: the screens are the same. Prompt 3.2 s after reset (Heath CP/M: 5.7 s). Sizes: shell 1866, BDOS 3127, BIOS 1696 bytes | CP/M programs native, 56K |
 | 4 | **Done.** The HDOS extension for CP/M programs (version 1's HCOS.SYS, `src/hdosx/`, run as `HDOSFS.COM`), loaded when the BDOS finds an HDOS disk. It reads HDOS sectors through the BIOS with the inverse of the BIOS's skew. Tests: CP/M's DIR, PIP (both ways, with verify), ERA, REN and STAT on an HDOS disk, the TPA (E206H, C300H with the extension), and real HDOS 2.0 reading what the CP/M programs wrote. Fixed on the way: warm boot's sums now start past what changes as the shell and BDOS run (the shell was reloaded after every command, and a BDOS error message changed the BDOS's code); the BDOS skips block numbers over DSM in a directory (an HDOS disk logged in as CP/M by STAT's select overwrote another drive's checksums); the shell loads programs only up to the TPA top | HDOS disks |
-| 5 | HDOS programs natively: ROM in, system area, SCALLs, .LINK, .LOADO, ^C handlers. `difftest.sh` against real HDOS 2.0, BASIC | HDOS programs native |
+| 5 | **Done.** HDOS programs natively, with the ROM in: version 1's HDOS.COM, in H-mode only. Its copy of the ROM's utility routines stays in the RAM under the ROM (1830H-1991H), because the ROM's own routines make SCALLs with the function byte inline, and the dispatcher reads it with RAM in. Fixed for H-mode: the RST slots went into HDOS.COM's code under the ROM (now the BIOS's console handler and clock hook, through two new BIOS entries), and S.GUP and the device, unit and overlay tables were under the ROM too (`hisys.asm`, at a fixed address in the high buffers). Keys typed while a program runs wait in the BIOS's type-ahead. `tests/difftest.sh`: v1's 9 differential tests against real HDOS 2.0, all the same. `tests/run.sh`: BASIC, HDOS PIP listing and copying both kinds of disk, real HDOS reading what it wrote, HDOS 3.0 calls. Also fixed: the BDOS's close of a file not written since open returns 0, as DRI's | HDOS programs native |
 | 6 | H37 driver and boot record. Formats: SS SD 10 x 256 (both H37 images), then DS and 16 x 256 MFM. Labels read as Heath's BIOS does | second controller |
 | 7 | FORMAT, SYSGEN, DRIVES and DATE as programs. A disk HCOS makes boots HCOS | self-hosting |
 | 8 | Sizes trimmed, ready-made disks in `v2/disks/`. Release 2.0 | |
@@ -268,7 +274,7 @@ where there's a real system to compare with.
 | R4 | DPBs and recognition | H17: one fixed DPB (SPT 20, 1K blocks, DSM 91, DRM 63, OFF 3, skewed). H37: DPB from the disk's label, default SS SD | [h17.md](research/h17.md), [h37.md](research/h37.md) |
 | R5 | Console and clock | 8250 polled at 9600 (or 19200); F2H bits 1 and 5; Heath's FAH/FBH are the H8-5 | [boot.md](research/boot.md) |
 | R6 | How much room the BIOS needs | Heath's H17 BIOS: 3764 bytes, of which the driver is 776. HCOS's: about 2.2-2.6K with both drivers | section 4 |
-| R7 | HDOS programs that call the ROM's disk routines | Not yet: it belongs to phase 5. The BIOS must forget every drive's track after an HDOS program runs | [h17.md](research/h17.md) |
+| R7 | HDOS programs that call the ROM's disk routines | Not supported yet (INIT, SYSGEN, TEST17). The BIOS must forget every drive's track after such a program runs | [h17.md](research/h17.md) |
 
 **Not confirmed by the research:**
 - The gap layout on real Heath-formatted H17 disks. The emulator has
@@ -285,7 +291,7 @@ where there's a real system to compare with.
 - **HDOS programs:** keep only the current HDOS disk's GRT, and read it
   again when the drive changes (about 768 bytes back with four drives).
 - **HDOS programs:** the H17's 1K of RAM at 1400H is visible with the ROM
-  in. The SCALL layer could keep its buffers there.
+  in. HDOS.COM could keep some of its high buffers there.
 - **HDOS programs:** the shell isn't needed while an HDOS program runs, so
   that space is theirs too.
 - **CP/M programs:** the shell could shrink below 2K, but CP/M programs
