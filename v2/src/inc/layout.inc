@@ -88,6 +88,11 @@ CON.LCR	equ	CON+3
 CON.MCR	equ	CON+4
 CON.LSR	equ	CON+5
 CON.IER	equ	CON+1
+; Hardware (H8 with the HA8-8): the same F2H for ORG-0, but the clock is
+; the front panel's, at 360Q. Heath's BIOS writes D0H there on every tick
+; on an H8 (clock on, the display dark) and never touches it on an H89.
+FP	equ	0F0h		; 360Q: H8 front panel control (OP.CTL)
+FP.H8	equ	0D0h
 
 ; MTR-90 / H17 ROM, while the ROM is in
 R.READ	equ	1C3Fh		; HL = sector, DE = buffer, BC = bytes; CY on error

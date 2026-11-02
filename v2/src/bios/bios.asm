@@ -24,6 +24,11 @@
 boot:	lxi	sp,stack
 	lhld	TICCNT		; the ROM has counted since reset
 	shld	tickc
+	lda	0000h		; the ROM: JMP on an H89 (MTR-88/89/90);
+	sui	0c3h		; not on an H8 (PAM-8, XCON8), as Heath's
+	jz	bt1		; loader tells them
+	mvi	a,FP.H8
+bt1:	sta	fpv
 	mvi	a,GP.ORG+GP.CLI	; RAM in at 0000H, clock on
 	sta	gppv
 	out	GPP
@@ -71,12 +76,17 @@ dinit:	xra	a
 	jmp	cini
 
 ; Console: 9600 baud (19200 with SW501 bit 6), 8N1, and the type-ahead.
+; An H8 has no SW501: 9600 there.
 coninit:
 	mvi	a,83h		; divisor latch
 	out	CON.LCR
+	lda	fpv
+	ora	a
+	mvi	a,12		; 1.8432 MHz / 16 / 9600
+	jnz	ci1
 	in	GPP		; SW501 bit 6: 19200 baud, else 9600
 	ani	SW.BAU
-	mvi	a,12		; 1.8432 MHz / 16 / 9600
+	mvi	a,12
 	jz	ci1
 	mvi	a,6
 ci1:	out	CON
@@ -310,12 +320,17 @@ p0rst:	mvi	m,0fbh
 
 ; ---- Clock: RST 1, every 2 ms ----
 ; Writes the general purpose port again on every tick, as Heath's BIOS
-; and HDOS 3.0 do, and counts.
+; and HDOS 3.0 do, and on an H8 the front panel port too (it keeps the
+; front panel's clock going), and counts.
 
 clock:	push	psw
 	lda	gppv
 	out	GPP
-	push	h
+	lda	fpv
+	ora	a
+	jz	clk0
+	out	FP
+clk0:	push	h
 	jmp	clk1
 ; The ROM's clock handler calls this (through 201FH) with the ROM in.
 ; The ROM looks after the general purpose port then.

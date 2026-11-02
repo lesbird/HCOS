@@ -70,7 +70,8 @@ h37cmp	equ	h37st+1		; where INTRQ goes then
 wbtab	equ	h37cmp+2	; SYSTAB, kept from the cold boot
 rlsec	equ	wbtab+8	; warm boot: the sector being reloaded
 rlcnt	equ	rlsec+1		; reloads since the cold boot
-rbuf	equ	(rlcnt+1+1fh) and 0ffe0h ; 32 bytes, 32-aligned
+fpv	equ	rlcnt+1		; H8: the value kept in port F0H; 0 on an H89
+rbuf	equ	(fpv+1+1fh) and 0ffe0h ; 32 bytes, 32-aligned
 hstbuf	equ	rbuf+32		; 256
 dirbuf	equ	hstbuf+256	; 128
 alv0	equ	dirbuf+128
