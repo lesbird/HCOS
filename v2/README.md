@@ -1,6 +1,6 @@
 # HCOS 2.0
 
-An operating system for the Heathkit H89 that runs **both** of the
+An operating system for the Heathkit H89 and H8 that runs **both** of the
 machine's software libraries, each the way its own system ran it:
 
 - **CP/M 2.2 programs** (`.COM`) get RAM at 0000H, page zero, a BDOS and
@@ -23,7 +23,7 @@ repository. How version 2 was designed and built is in
 
 | Disk | For | Boots from | Drives | CP/M TPA |
 |---|---|---|---|---|
-| [`disks/hcos-h17.h8d`](disks/) | an H89 with an H17 | H17 | A:-C: H17 | 56K |
+| [`disks/hcos-h17.h8d`](disks/) | an H89 or H8 with an H17 | H17 | A:-C: H17 | 56K |
 | [`disks/hcos-h17x.h8d`](disks/) | an H17 and an H37 | H17 | A:-C: H17, D:-F: H37 | 54K |
 | [`disks/hcos-h37.h37`](disks/) | an H37 and an H17 | H37 | A:-C: H37, D:-F: H17 | 54K |
 
@@ -102,8 +102,13 @@ BIOS.
   `FORMAT d: HDOS` does INIT's job.
 - **HDOS programs** see drives A:-D: only, and get 2280H-D5FFH (2K less
   in the H37 builds; real HDOS 2.0 gives up to EDB0H).
-- **The H8** isn't supported yet (its monitor, console and memory switch
-  differ).
+- **The H8** needs what Heath CP/M needs there: 64K, the HA8-8 (RAM at
+  0000H through 362Q) with PAM-8 or XCON8, and an H8-4 console (8250 at
+  350Q) at 9600 baud. The H8-5 (8251 at 372Q) isn't supported yet. Use
+  `hcos-h17.h8d`. HCOS finds an H8 by the monitor ROM, as Heath's BIOS
+  does, and keeps the front panel's clock going (360Q is written on
+  every tick, so the display is dark). Booted on a real H8 (HA8-8,
+  XCON8, H8-4, H17).
 
 ## Building and testing
 
